@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test build/test/*.test.js",
-    "start": "node build/src/index.js"
+    "start": "node build/src/index.js",
+    "web": "npm run build && node build/src/web-server.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

@@ -32,6 +32,8 @@ needed.
   error state, and result area.
 - `package.json`: adds a command that builds the project and starts the web
   demo.
+- `docs/mcp-web-chain.md`: records the durable browser-to-MCP runtime chain,
+  API contract, file ownership, and troubleshooting steps in Chinese.
 
 ## Data Flow
 
@@ -63,3 +65,9 @@ needed.
 - No persistent Codex MCP registration.
 - No remote deployment, authentication, database, or framework migration.
 - No parsing of `codex exec` output.
+
+## Run And Preview
+
+Run `npm run web`, then open `http://127.0.0.1:3000`. The bridge binds only to
+the local loopback interface. `PORT=<number> npm run web` can select another
+local port without changing the default.
