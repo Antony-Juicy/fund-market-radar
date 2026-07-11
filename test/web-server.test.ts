@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
+import { resolve } from "node:path";
 import test from "node:test";
 
 import {
@@ -89,6 +90,24 @@ test("unknown routes return 404", async () => {
 
       assert.equal(response.status, 404);
       assert.deepEqual(await response.json(), { error: "Not found." });
+    }
+  );
+});
+
+test("GET / serves the local MCP demo page", async () => {
+  await withServer(
+    {
+      callHello: async () => ({ content: [] }),
+      indexFile: resolve(process.cwd(), "public/index.html")
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/`);
+      const html = await response.text();
+
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+      assert.match(html, /id="hello-form"/);
+      assert.match(html, /id="result"/);
     }
   );
 });
