@@ -80,6 +80,35 @@ test("GET /api/hello maps MCP failures to 502", async () => {
   );
 });
 
+test("GET /api/funds returns a filtered fund snapshot", async () => {
+  await withServer(
+    {
+      callHello: async () => ({ content: [] }),
+      callFundSnapshot: async (keyword, market, sort, limit, matchBy = "all") => ({
+        keyword, matchBy, market, sort, limit, dataDate: "2026-07-11", updatedAt: "2026-07-11T10:00:00+08:00", isTradingDay: true,
+        items: [{ code: "012345", name: "半导体精选混合", market: "off_exchange", fundType: "混合型", industry: "半导体", changePercent: -1.4, dataDate: "2026-07-10", updatedAt: "2026-07-11T10:00:00+08:00", isTradingDay: true, officialNavAvailable: false, source: "sample", matchedBy: ["名称", "行业"] }]
+      })
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/funds?keyword=%E5%8D%8A%E5%AF%BC%E4%BD%93&market=off_exchange&limit=10`);
+      assert.equal(response.status, 200);
+      const body = await response.json() as { items: Array<{ code: string }> };
+      assert.equal(body.items[0]?.code, "012345");
+    }
+  );
+});
+
+test("GET /api/funds rejects invalid query parameters", async () => {
+  await withServer(
+    { callHello: async () => ({ content: [] }), callFundSnapshot: async () => { throw new Error("should not call"); } },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/funds?limit=101`);
+      assert.equal(response.status, 400);
+      assert.match((await response.json() as { error: string }).error, /between 1 and 100/);
+    }
+  );
+});
+
 test("unknown routes return 404", async () => {
   await withServer(
     {
@@ -98,7 +127,7 @@ test("GET / serves the local MCP demo page", async () => {
   await withServer(
     {
       callHello: async () => ({ content: [] }),
-      indexFile: resolve(process.cwd(), "public/index.html")
+      indexFile: resolve(process.cwd(), "dist/index.html")
     },
     async (baseUrl) => {
       const response = await fetch(`${baseUrl}/`);
@@ -106,8 +135,9 @@ test("GET / serves the local MCP demo page", async () => {
 
       assert.equal(response.status, 200);
       assert.match(response.headers.get("content-type") ?? "", /text\/html/);
-      assert.match(html, /id="hello-form"/);
-      assert.match(html, /id="result"/);
+      assert.match(html, /id="root"/);
+      assert.match(html, /公募基金市场雷达/);
+      assert.match(html, /assets\/index-.*\.js/);
     }
   );
 });

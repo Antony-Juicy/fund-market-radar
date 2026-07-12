@@ -1,73 +1,119 @@
-# Local Web Demo Design
+# 本地 MCP Web 演示设计说明
 
-## Goal
+## 目标
 
-Add a local page at `http://127.0.0.1:3000` that accepts a name, calls the
-existing `hello` MCP tool, and renders the returned text. The demo must not
-write to Codex MCP configuration or parse terminal output.
+在 `http://127.0.0.1:3000` 提供一个可操作的本地页面：用户输入姓名，调用已有的
+`hello` MCP 工具，并在页面上显示工具返回的文本。页面同时承担入门教学职责，让用户
+能看懂浏览器请求、HTTP Bridge 和 STDIO MCP 之间的关系。
 
-## Architecture
+本演示不写入 Codex 的 MCP 配置，不解析终端输出，也不把 Codex 模型加入运行链路。
 
-One web-bridge Node process serves the page and an HTTP API. On startup, it
-creates an MCP client and launches the existing compiled MCP server as a
-second local Node process over STDIO. The browser communicates only with the
-HTTP API.
+## 设计方向
+
+页面采用“本地开发工具 + 教学链路”的方向，正式标题为：
+
+> 本地 MCP 工具调用工作台
+
+副标题为：
+
+> 在浏览器中调用并观察本地 MCP 工具
+
+页面采用左右双栏：
+
+- 左侧是实际操作区，负责选择工具、填写参数、提交调用和查看结果。
+- 右侧是操作步骤区，解释一次请求从浏览器到 MCP 再返回页面的过程。
+- 在移动端双栏折叠为纵向布局，操作区先出现，步骤区随后出现。
+
+视觉语言使用浅色纸张背景、深色文字、青绿色状态色、珊瑚色强调色和黄色提示色，
+呈现偏工业化、可扫描的本地开发工具气质。卡片边角保持克制，避免营销式大卡片和
+装饰性渐变。
+
+标题使用固定字号和响应式断点保持单行展示，避免通过视口比例持续缩放造成视觉跳动。
+结果区预留固定最小高度，成功返回只改变颜色和文本，不使用透明度或位移动画，避免
+快速调用时出现闪烁。
+
+## 架构
+
+一个 Node Web Bridge 进程提供静态页面和 HTTP API。启动时，它创建 MCP Client，
+再以第二个本地 Node 进程通过 STDIO 启动已有的 MCP Server。浏览器只访问 HTTP API。
 
 ```text
-Browser -> GET /api/hello?name=Tony -> Web bridge -> MCP hello tool
-Browser <- { "text": "Hello result" } <- Web bridge <- MCP result
+浏览器 -> GET /api/hello?name=Tony -> Web Bridge -> MCP hello 工具
+浏览器 <- { "text": "你好，Tony!" } <- Web Bridge <- MCP 返回内容
 ```
 
-The server binds to `127.0.0.1:3000` so the demo is local only. It uses Node's
-built-in HTTP APIs and the existing MCP SDK; no new runtime dependency is
-needed.
+服务绑定 `127.0.0.1:3000`，只允许本机访问。实现使用 Node 内置 HTTP API 和现有
+MCP SDK，不增加运行时依赖。
 
-## Components
+## 组件职责
 
-- `src/web-server.ts`: starts the HTTP server, owns the MCP client, validates
-  requests, calls `hello`, and returns JSON.
-- `src/web-helpers.ts`: contains independently testable input validation and
-  MCP text extraction helpers.
-- `public/index.html`: provides a name input, submit button, loading state,
-  error state, and result area.
-- `package.json`: adds a command that builds the project and starts the web
-  demo.
-- `docs/mcp-web-chain.md`: records the durable browser-to-MCP runtime chain,
-  API contract, file ownership, and troubleshooting steps in Chinese.
+- `src/web-server.ts`：启动 HTTP 服务，管理 MCP Client，校验请求，调用 `hello`，
+  返回 JSON。
+- `src/web-helpers.ts`：提供可独立测试的姓名校验和 MCP 文本提取函数。
+- `public/index.html`：提供中文标题、调用表单、加载状态、成功结果、错误状态和右侧
+  操作步骤。
+- `package.json`：提供构建并启动 Web 演示的命令。
+- `docs/mcp-web-chain.md`：记录稳定的浏览器到 MCP 运行链路、API 契约、文件职责和
+  排查方法。
 
-## Data Flow
+## 数据流
 
-1. The user enters a name and submits the form.
-2. The page requests `/api/hello?name=<value>`.
-3. The web bridge trims and validates the name.
-4. The bridge calls `client.callTool({ name: "hello", arguments: { name } })`.
-5. The bridge extracts the first text content item and returns `{ "text": ... }`.
-6. The page renders the text without inserting HTML.
+1. 用户在左侧输入姓名并提交表单。
+2. 页面请求 `/api/hello?name=<姓名>`。
+3. Web Bridge 去除姓名两侧空白并校验输入。
+4. Bridge 调用 `client.callTool({ name: "hello", arguments: { name } })`。
+5. Bridge 提取第一个文本内容项，返回 `{ "text": "..." }`。
+6. 页面用 `textContent` 渲染返回文本，不把返回内容当作 HTML 执行。
+7. 页面更新右侧步骤状态，帮助用户理解当前调用已经走到哪一步。
 
-## Error Handling
+## 交互状态
 
-- Empty names and names longer than 80 characters return HTTP 400.
-- MCP startup failures prevent the web server from claiming readiness.
-- MCP call failures return HTTP 502 with a short JSON error message.
-- Unknown routes return HTTP 404.
-- The page disables submission while loading and displays request errors.
+- 初始状态：输入框可编辑，结果区显示等待调用的提示。
+- 加载状态：提交按钮禁用，按钮显示正在调用，结果区保留布局不发生跳动。
+- 成功状态：显示“调用成功”、返回文本和请求耗时；步骤区标记链路已完成。
+- 输入错误：空姓名或超过 80 个 Unicode 字符时显示中文错误提示，不发送请求。
+- 服务错误：HTTP Bridge 或 MCP 调用失败时显示可理解的中文错误提示，并允许再次
+  提交。
+- 进度感知：浏览器请求、Bridge 连接和结果渲染之间保留短暂可见阶段，避免快速本地
+  调用把步骤一闪而过。
+- 重置：点击“↺ 重置”恢复默认姓名、等待提示、初始链路和第 1 步状态，无需刷新页面；
+  重置后旧请求的迟到结果不会覆盖新状态。
 
-## Testing
+## 错误处理
 
-- Unit tests cover name validation and MCP text extraction.
-- HTTP tests use an injected fake tool caller to verify success, validation,
-  and upstream failure behavior without launching a model or Codex.
-- Final verification runs the full test suite, starts the local server, checks
-  the API with `curl`, and exercises the page in a browser.
+- 空姓名和超过 80 个字符的姓名返回 HTTP 400。
+- MCP 启动失败时，Web 服务不能宣称已准备完成。
+- MCP 调用失败时返回 HTTP 502 和简短 JSON 错误信息。
+- 未知路由返回 HTTP 404。
+- 页面在加载期间禁用提交，避免重复请求。
 
-## Non-goals
+## 测试
 
-- No persistent Codex MCP registration.
-- No remote deployment, authentication, database, or framework migration.
-- No parsing of `codex exec` output.
+- 单元测试覆盖姓名校验和 MCP 文本提取。
+- HTTP 测试通过注入假的工具调用器验证成功、输入错误和上游失败，不启动模型或
+  Codex。
+- 页面静态检查验证正式标题、操作区、步骤区以及无障碍标签存在。
+- 最终验证运行完整测试套件，启动本地服务，用 `curl` 检查 API，再用浏览器验证桌面
+  和移动端页面以及一次真实调用。
 
-## Run And Preview
+## 非目标
 
-Run `npm run web`, then open `http://127.0.0.1:3000`. The bridge binds only to
-the local loopback interface. `PORT=<number> npm run web` can select another
-local port without changing the default.
+- 不永久注册 Codex MCP。
+- 不进行远程部署、身份验证、数据库接入或框架迁移。
+- 不解析 `codex exec` 输出。
+
+## 启动与预览
+
+运行：
+
+```bash
+npm run web
+```
+
+然后打开 `http://127.0.0.1:3000`。服务只绑定本机回环地址。
+
+如需临时更换端口：
+
+```bash
+PORT=3001 npm run web
+```

@@ -4,17 +4,27 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && vite build",
     "test": "npm run build && node --test build/test/*.test.js",
-    "start": "node build/src/index.js",
-    "web": "npm run build && node build/src/web-server.js"
+    "start": "FUND_DATA_MODE=real node build/src/index.js",
+    "web": "npm run build && FUND_DATA_MODE=real node build/src/web-server.js",
+    "web:sample": "npm run build && FUND_DATA_MODE=sample node build/src/web-server.js"
   },
   "dependencies": {
+    "@mantine/core": "^7.17.8",
+    "@mantine/hooks": "^7.17.8",
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@tabler/icons-react": "^3.34.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "zod": "^3.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.0.0"
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.0.0",
+    "vite": "^6.1.0"
   }
 }

@@ -1,62 +1,57 @@
 # demo-mcp
 
-A minimal TypeScript MCP server that exposes one tool: `hello`.
+一个 TypeScript MCP 示例服务，包含基础 `hello` 工具和国内公募基金行情工具；前端使用 React、Vite 和 Mantine。
 
-## Install
+## 安装与测试
 
 ```bash
 npm install
-```
-
-## Build
-
-```bash
-npm run build
-```
-
-## Test
-
-```bash
 npm test
 ```
 
-## Inspect
-
-```bash
-npx @modelcontextprotocol/inspector node build/src/index.js
-```
-
-## Local Web Demo
-
-Start the local HTTP-to-MCP bridge:
+## 启动预览
 
 ```bash
 npm run web
 ```
 
-Open [http://127.0.0.1:3000](http://127.0.0.1:3000), enter a name, and select
-**调用 MCP →**. Stop the server with `Ctrl+C`.
+打开 [http://127.0.0.1:3000](http://127.0.0.1:3000)，页面会展示“公募基金市场雷达”。
+`npm run web` 默认使用真实行情；点击查询即可观察完整的 Browser → HTTP Bridge →
+STDIO MCP → `fund_market_snapshot` 链路。
 
-The page calls the same-origin HTTP endpoint:
+## 数据来源
 
-```text
-GET /api/hello?name=Tony
+真实模式直接读取东方财富公开行情接口，不依赖本地 Python：
+
+- 场内 ETF：最新价、IOPV、涨跌幅、成交量、成交额、近 1 周和近 1 月收益。
+- 场外公募：正式单位净值、日增长率、上一交易日、近 1 周、近 15 天和近 1 月收益。
+- 市场概览：上证指数、深证成指、创业板指及行业主力净流向。
+
+流入、流出金额是行业主力净流向正值与负值的分别汇总，不表示市场总成交额。周末和
+休市日展示最近交易日数据，并在 JSON 中将 `isTradingDay` 标记为 `false`。
+
+仅需固定样本进行离线演示时使用：
+
+```bash
+npm run web:sample
 ```
 
-The endpoint returns:
+## MCP 工具
 
-```json
-{"text":"你好，Tony!"}
+`src/index.ts` 注册：
+
+- `hello({ name })`：返回中文问候语。
+- `fund_market_snapshot({ keyword?, matchBy?, market?, sort?, limit? })`：按代码、名称、类型、指数或行业查询场内/场外公募基金行情。
+- `market_overview()`：查询指数与行业板块主力净流向。
+- `fund_detail({ code })`：查询单只基金详情与真实区间收益。
+
+直接接入 MCP Inspector：
+
+```bash
+npx @modelcontextprotocol/inspector node build/src/index.js
 ```
 
-The browser does not launch the STDIO process directly. The Node web bridge is
-the MCP client and starts `build/src/index.js` as a child process. This flow
-does not add anything to Codex MCP configuration.
-
-See [docs/mcp-web-chain.md](docs/mcp-web-chain.md) for the complete runtime
-chain, file ownership, API contract, and troubleshooting notes.
-
-## Example MCP Client Configuration
+Codex 或其他 MCP Client 的配置示例：
 
 ```json
 {
@@ -68,3 +63,9 @@ chain, file ownership, API contract, and troubleshooting notes.
   }
 }
 ```
+
+## 文档
+
+- [中文链路文档](docs/mcp-web-chain.md)
+- [基金 MCP 设计说明](docs/superpowers/specs/2026-07-11-fund-market-mcp-design.md)
+- [基金 MCP 实施计划](docs/superpowers/plans/2026-07-11-fund-market-mcp-plan.md)
