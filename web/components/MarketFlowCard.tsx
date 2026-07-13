@@ -108,14 +108,15 @@ export function MarketFlowCard({
                     行业净流向占比
                   </Text>
                   <Progress
-                    sections={[
-                      { value: data.inflowRatio, color: "red" },
-                      { value: data.outflowRatio, color: "teal" },
-                    ]}
+                    value={100}
                     size="sm"
-                    w={110}
+                    w={150}
                     aria-label="净流入与净流出板块金额占比"
-                  />
+                    className="market-flow-ratio-track"
+                  >
+                    <Progress.Section value={data.inflowRatio} color="red" />
+                    <Progress.Section value={data.outflowRatio} color="teal" />
+                  </Progress>
                   <Group justify="space-between">
                     <Text size="xs" c="red">
                       流入 {percent(data.inflowRatio)}

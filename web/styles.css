@@ -130,6 +130,11 @@
   min-width: 142px;
   padding-right: 0;
 }
+.market-flow-ratio-track {
+  min-width: 150px;
+  background: #e8edf3;
+  border-radius: 999px;
+}
 .market-flow-ratio-note {
   white-space: nowrap;
 }
