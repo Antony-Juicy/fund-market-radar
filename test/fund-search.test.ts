@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   canSearchFunds,
   createSelectedFundQuery,
+  withResearchTab,
+  withFundKeyword,
   toFundSearchOptions
 } from "../src/fund-search.js";
 import type { FundQuote } from "../src/fund-types.js";
@@ -44,5 +46,53 @@ test("selecting a fund creates an exact code query", () => {
     market: "all",
     sort: "change_desc",
     limit: 20
+  });
+});
+
+test("changing from a code to a topic restores all-field matching", () => {
+  assert.deepEqual(withFundKeyword({
+    keyword: "159915",
+    matchBy: "code",
+    market: "on_exchange",
+    sort: "name",
+    limit: 50
+  }, "AI"), {
+    keyword: "AI",
+    matchBy: "all",
+    market: "on_exchange",
+    sort: "name",
+    limit: 50
+  });
+});
+
+test("clearing a topic clears the keyword and keeps all-field matching", () => {
+  const query = withFundKeyword({
+    keyword: "AI",
+    matchBy: "industry",
+    market: "all",
+    sort: "change_desc",
+    limit: 20
+  }, "");
+
+  assert.equal(query.keyword, "");
+  assert.equal(query.matchBy, "all");
+});
+
+test("the all tab uses a neutral sort while movement tabs use directional sorts", () => {
+  const query = {
+    keyword: "",
+    matchBy: "all" as const,
+    market: "all" as const,
+    sort: "change_desc" as const,
+    limit: 20
+  };
+
+  assert.equal(withResearchTab(query, "all").sort, "name");
+  assert.equal(withResearchTab(query, "top").sort, "change_desc");
+  assert.equal(withResearchTab(query, "down").sort, "change_asc");
+  assert.deepEqual(withResearchTab(query, "on_exchange"), {
+    ...query,
+    market: "on_exchange",
+    sort: "name"
   });
 });
