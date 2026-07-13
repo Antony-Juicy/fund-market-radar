@@ -218,6 +218,21 @@
   height: 40px;
   min-height: 40px;
 }
+.fund-search-hint {
+  min-height: 16px;
+  margin-top: 4px;
+  font-size: 10px;
+}
+.fund-search-option {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 4px 0;
+  overflow: hidden;
+}
+.fund-search-option .mantine-Text-root {
+  min-width: 0;
+}
 .search-action {
   min-height: 40px;
 }
@@ -442,5 +457,8 @@
   }
   .result-hint {
     display: none;
+  }
+  .fund-search-option {
+    max-width: calc(100vw - 64px);
   }
 }

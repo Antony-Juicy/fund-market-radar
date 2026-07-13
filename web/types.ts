@@ -1,4 +1,5 @@
 export type FundMarket = "all" | "on_exchange" | "off_exchange";
+export type { FundSearchOption } from "../src/fund-search";
 export type FundSort = "change_desc" | "change_asc" | "name";
 export type FundMatchBy = "all" | "code" | "name" | "type" | "index" | "industry";
 export type ResearchTab = "all" | "top" | "down" | "on_exchange" | "off_exchange";

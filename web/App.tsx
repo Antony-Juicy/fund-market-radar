@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, Badge, Button, Card, Container, Divider, Group, Modal, Stack, Text, Title, Tooltip } from "@mantine/core";
+import { useDebouncedValue } from "@mantine/hooks";
 import { IconActivity, IconAdjustmentsHorizontal, IconChartCandle, IconRefresh, IconRoute, IconX } from "@tabler/icons-react";
-import { fetchFundDetail, fetchFundSnapshot, fetchMarketOverview } from "./api";
+import { fetchFundDetail, fetchFundSnapshot, fetchFundSuggestions, fetchMarketOverview } from "./api";
+import { canSearchFunds, createSelectedFundQuery } from "../src/fund-search";
 import { FilterBar } from "./components/FilterBar";
 import { FundDetailPanel } from "./components/FundDetailPanel";
 import { FundTable } from "./components/FundTable";
@@ -9,7 +11,7 @@ import { McpChainDrawer } from "./components/McpChainDrawer";
 import { MarketFlowCard } from "./components/MarketFlowCard";
 import { OverviewPanel } from "./components/OverviewPanel";
 import { ResearchTabs } from "./components/ResearchTabs";
-import type { FundDetail, FundPeriodKey, FundQuery, FundSnapshot, MarketOverview, ResearchTab } from "./types";
+import type { FundDetail, FundPeriodKey, FundQuery, FundSearchOption, FundSnapshot, MarketOverview, ResearchTab } from "./types";
 
 const initialQuery: FundQuery = { keyword: "", matchBy: "all", market: "all", sort: "change_desc", limit: 20 };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,7 +31,12 @@ export function App() {
   const [marketOverview, setMarketOverview] = useState<MarketOverview>();
   const [marketLoading, setMarketLoading] = useState(true);
   const [marketError, setMarketError] = useState<string>();
+  const [suggestions, setSuggestions] = useState<FundSearchOption[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState<string>();
+  const [debouncedKeyword] = useDebouncedValue(query.keyword, 250);
   const controllerRef = useRef<AbortController>();
+  const suggestionControllerRef = useRef<AbortController>();
 
   const runQuery = async (nextQuery = query) => {
     controllerRef.current?.abort();
@@ -45,16 +52,63 @@ export function App() {
   };
 
   useEffect(() => { void runQuery(initialQuery); return () => controllerRef.current?.abort(); }, []);
+  useEffect(() => {
+    suggestionControllerRef.current?.abort();
+    if (!canSearchFunds(debouncedKeyword) || query.matchBy === "code") {
+      setSuggestions([]);
+      setSuggestionError(undefined);
+      setSuggestionsLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    suggestionControllerRef.current = controller;
+    setSuggestionsLoading(true);
+    setSuggestionError(undefined);
+    void fetchFundSuggestions(debouncedKeyword, controller.signal)
+      .then((items) => {
+        setSuggestions(items);
+        setSuggestionError(items.length ? undefined : "未找到匹配基金");
+      })
+      .catch((caught) => {
+        if ((caught as Error).name !== "AbortError") {
+          setSuggestions([]);
+          setSuggestionError("暂时无法获取搜索建议");
+        }
+      })
+      .finally(() => {
+        if (suggestionControllerRef.current === controller) setSuggestionsLoading(false);
+      });
+    return () => controller.abort();
+  }, [debouncedKeyword, query.matchBy]);
   const loadMarketOverview = async () => { setMarketLoading(true); setMarketError(undefined); try { setMarketOverview(await fetchMarketOverview()); } catch (caught) { setMarketOverview(undefined); setMarketError(caught instanceof Error ? caught.message : "实时市场数据读取失败"); } finally { setMarketLoading(false); } };
   useEffect(() => { void loadMarketOverview(); }, []);
 
   const updateQuery = (partial: Partial<FundQuery>) => setQuery((current) => ({ ...current, ...partial }));
+  const updateKeyword = (keyword: string) => {
+    setQuery((current) => ({
+      ...current,
+      keyword,
+      matchBy: /^\d{6}$/.test(keyword.trim()) ? "code" : "all"
+    }));
+    if (!canSearchFunds(keyword)) {
+      setSuggestions([]);
+      setSuggestionError(undefined);
+    }
+  };
+  const selectFund = (code: string) => {
+    suggestionControllerRef.current?.abort();
+    const nextQuery = createSelectedFundQuery(code, query.limit);
+    setQuery(nextQuery);
+    setSuggestions([]);
+    setSuggestionError(undefined);
+    void runQuery(nextQuery);
+  };
   const handleTab = (next: ResearchTab) => {
     setTab(next);
     const patch: Partial<FundQuery> = next === "top" ? { market: "all", sort: "change_desc" } : next === "down" ? { market: "all", sort: "change_asc" } : next === "on_exchange" || next === "off_exchange" ? { market: next, sort: "change_desc" } : { market: "all", sort: "change_desc" };
     const nextQuery = { ...query, ...patch }; setQuery(nextQuery); void runQuery(nextQuery);
   };
-  const reset = () => { setQuery(initialQuery); setTab("all"); setPeriod("today"); setDetail(undefined); void runQuery(initialQuery); };
+  const reset = () => { suggestionControllerRef.current?.abort(); setSuggestions([]); setSuggestionError(undefined); setQuery(initialQuery); setTab("all"); setPeriod("today"); setDetail(undefined); void runQuery(initialQuery); };
   const openDetail = async (code: string) => { setDetailLoading(true); try { setDetail(await fetchFundDetail(code)); } catch (caught) { setError(caught instanceof Error ? caught.message : "详情读取失败"); } finally { setDetailLoading(false); } };
   const focusFund = (code: string) => { setHighlightCode(code); document.getElementById(`fund-row-${code}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); window.setTimeout(() => setHighlightCode((current) => current === code ? undefined : current), 2200); };
   const status = error || (loading ? stage === 3 ? "MCP 正在返回基金行情..." : "正在准备查询..." : snapshot ? `已返回 ${snapshot.items.length} 条行情` : "准备就绪");
@@ -66,7 +120,7 @@ export function App() {
       <Group align="flex-start"><Stack gap={4}><Text size="xs" fw={700} c="blue" tt="uppercase" lts=".12em">Demo MCP / Market Intelligence</Text><Title order={1}>公募基金市场雷达</Title><Text c="dimmed" maw={720}>扫描场内外基金表现，跟踪资金方向与行业变化。</Text></Stack></Group>
 
       <MarketFlowCard data={marketOverview} loading={marketLoading} error={marketError} onRetry={() => void loadMarketOverview()} />
-      <div className="dashboard-grid"><Card withBorder radius="lg" padding="md" className="market-scan-card"><Group justify="space-between" mb="sm"><Group gap="xs"><IconAdjustmentsHorizontal size={18} /><Text fw={700}>市场扫描</Text><Text size="xs" c="dimmed">{snapshot?.dataDate ? `最近数据日 ${snapshot.dataDate}` : "等待查询"}</Text></Group><Tooltip label="恢复默认筛选并重新加载前 20 条基金"><Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={reset}>重置筛选</Button></Tooltip></Group><ResearchTabs value={tab} onChange={handleTab} /><FilterBar query={query} loading={loading} onChange={updateQuery} onSearch={() => void runQuery()} /><FundTable items={snapshot?.items || []} loading={loading} onSelect={openDetail} highlightCode={highlightCode} /></Card><OverviewPanel items={snapshot?.items || []} period={period} onPeriodChange={setPeriod} onSelect={focusFund} /></div>
+      <div className="dashboard-grid"><Card withBorder radius="lg" padding="md" className="market-scan-card"><Group justify="space-between" mb="sm"><Group gap="xs"><IconAdjustmentsHorizontal size={18} /><Text fw={700}>市场扫描</Text><Text size="xs" c="dimmed">{snapshot?.dataDate ? `最近数据日 ${snapshot.dataDate}` : "等待查询"}</Text></Group><Tooltip label="恢复默认筛选并重新加载前 20 条基金"><Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={reset}>重置筛选</Button></Tooltip></Group><ResearchTabs value={tab} onChange={handleTab} /><FilterBar query={query} loading={loading} suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionError={suggestionError} onChange={updateQuery} onKeywordChange={updateKeyword} onFundSelect={selectFund} onSearch={() => void runQuery()} /><FundTable items={snapshot?.items || []} loading={loading} onSelect={openDetail} highlightCode={highlightCode} /></Card><OverviewPanel items={snapshot?.items || []} period={period} onPeriodChange={setPeriod} onSelect={focusFund} /></div>
       <Card withBorder radius="lg" padding="sm" className="chain-bar"><Group justify="space-between"><Group gap="xs"><IconRoute size={18} color="#2563eb" /><Text size="sm" fw={700}>MCP 调用链路</Text><Text size="xs" c="dimmed">调试模式</Text></Group><Button variant="subtle" size="xs" onClick={() => setChainOpen(true)}>查看调用步骤</Button></Group></Card>
     </Stack></Container></AppShell.Main>
     <McpChainDrawer opened={chainOpen} onClose={() => setChainOpen(false)} activeStep={loading ? stage : 4} />

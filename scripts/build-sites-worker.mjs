@@ -24,6 +24,11 @@ const html = ${JSON.stringify(html)};
 const assets = ${JSON.stringify(assets)};
 const jsonHeaders = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
 const source = "东方财富行业资金流向与指数行情";
+const ETF_PAGE_SIZE = 100;
+const FUND_CACHE_TTL_MS = 120000;
+let fundQuotesCache;
+let fundQuotesExpiresAt = 0;
+let fundQuotesLoading;
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -89,11 +94,30 @@ function parseOpenFunds(text) {
   return rows.map((row) => ({ code: row[0], name: row[1], market: "off_exchange", fundType: "开放式公募", nav: number(row[3]), changePercent: number(row[8]), dataDate, updatedAt: new Date().toISOString(), source: "东方财富开放式基金净值", flowBasis: "基金净值与日涨跌幅" })).filter((item) => /^\\d{6}$/.test(item.code || "") && item.name && typeof item.nav === "number");
 }
 
-async function fundQuotes() {
-  const etfParams = new URLSearchParams({ pn: "1", pz: "300", po: "1", np: "1", ut: "bd1d9ddb04089700cf9c27f6f7426281", fltt: "2", invt: "2", fid: "f12", fs: "b:MK0021,b:MK0022,b:MK0023,b:MK0024,b:MK0827", fields: "f2,f3,f12,f14,f124,f297,f441" });
-  const [etfPayload, openText] = await Promise.all([getJson("https://push2delay.eastmoney.com/api/qt/clist/get?" + etfParams), getText("https://fund.eastmoney.com/Data/Fund_JJJZ_Data.aspx?t=1&lx=1&sort=zdf,desc&page=1,5000&dt=" + Date.now())]);
-  const etfs = (etfPayload.data?.diff || []).map((row) => ({ code: row.f12, name: row.f14, market: "on_exchange", fundType: "ETF", price: number(row.f2), nav: number(row.f441), changePercent: number(row.f3), periodChanges: { today: number(row.f3) }, dataDate: /^\\d{8}$/.test(String(row.f297)) ? String(row.f297).replace(/(\\d{4})(\\d{2})(\\d{2})/, "$1-$2-$3") : shanghaiDate(), updatedAt: dateOf(row.f124), source: "东方财富 ETF 行情", flowBasis: "ETF 交易价格与日涨跌幅" })).filter((item) => /^\\d{6}$/.test(item.code || "") && item.name);
+function etfUrl(page) {
+  const params = new URLSearchParams({ pn: String(page), pz: String(ETF_PAGE_SIZE), po: "1", np: "1", ut: "bd1d9ddb04089700cf9c27f6f7426281", fltt: "2", invt: "2", fid: "f12", fs: "b:MK0021,b:MK0022,b:MK0023,b:MK0024,b:MK0827", fields: "f2,f3,f12,f14,f124,f297,f441" });
+  return "https://push2delay.eastmoney.com/api/qt/clist/get?" + params;
+}
+
+async function loadFundQuotes() {
+  const [firstEtfPayload, openText] = await Promise.all([getJson(etfUrl(1)), getText("https://fund.eastmoney.com/Data/Fund_JJJZ_Data.aspx?t=1&lx=1&sort=zdf,desc&page=1,5000&dt=" + Date.now())]);
+  const pageCount = Math.max(1, Math.ceil(Number(firstEtfPayload.data?.total || 0) / ETF_PAGE_SIZE));
+  const remainingPayloads = await Promise.all(Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) => getJson(etfUrl(index + 2))));
+  const etfRows = [firstEtfPayload, ...remainingPayloads].flatMap((payload) => payload.data?.diff || []);
+  const etfs = etfRows.map((row) => ({ code: row.f12, name: row.f14, market: "on_exchange", fundType: "ETF", price: number(row.f2), nav: number(row.f441), changePercent: number(row.f3), periodChanges: { today: number(row.f3) }, dataDate: /^\\d{8}$/.test(String(row.f297)) ? String(row.f297).replace(/(\\d{4})(\\d{2})(\\d{2})/, "$1-$2-$3") : shanghaiDate(), updatedAt: dateOf(row.f124), source: "东方财富 ETF 行情", flowBasis: "ETF 交易价格与日涨跌幅" })).filter((item) => /^\\d{6}$/.test(item.code || "") && item.name);
   return etfs.concat(parseOpenFunds(openText));
+}
+
+async function fundQuotes() {
+  if (fundQuotesCache && Date.now() < fundQuotesExpiresAt) return fundQuotesCache;
+  if (!fundQuotesLoading) {
+    fundQuotesLoading = loadFundQuotes().then((items) => {
+      fundQuotesCache = items;
+      fundQuotesExpiresAt = Date.now() + FUND_CACHE_TTL_MS;
+      return items;
+    });
+  }
+  try { return await fundQuotesLoading; } finally { fundQuotesLoading = undefined; }
 }
 
 function filterFunds(items, url) {

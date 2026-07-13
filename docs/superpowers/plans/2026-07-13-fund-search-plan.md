@@ -104,6 +104,7 @@ git commit -m "test: define fund search behavior"
 **Files:**
 - Modify: `web/api.ts`
 - Modify: `web/types.ts`
+- Modify: `scripts/build-sites-worker.mjs`
 
 **Interfaces:**
 - Consumes: `canSearchFunds` and `toFundSearchOptions` from Task 1.
@@ -127,16 +128,20 @@ export async function fetchFundSuggestions(keyword: string, signal?: AbortSignal
 }
 ```
 
-- [ ] **Step 3: Verify type checking and existing fallback behavior**
+- [ ] **Step 3: Expand the deployed Worker to the complete ETF quote pool**
+
+Request Eastmoney ETF pages at 100 rows per page, merge all pages with the open-fund quote set, and cache the merged real-data result for 120 seconds so name searches include funds beyond the old first page.
+
+- [ ] **Step 4: Verify type checking and existing fallback behavior**
 
 Run: `npm run build`
 
 Expected: TypeScript and Vite builds complete without errors.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add web/api.ts web/types.ts
+git add web/api.ts web/types.ts scripts/build-sites-worker.mjs
 git commit -m "feat: add real fund suggestion query"
 ```
 

@@ -1,5 +1,10 @@
 import type { FundDetail, FundQuery, FundSnapshot, MarketOverview } from "./types";
 import { createSnapshotFromStaticData } from "../src/pages-fallback";
+import {
+  canSearchFunds,
+  toFundSearchOptions,
+  type FundSearchOption
+} from "../src/fund-search";
 
 const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const STATIC_DATA_BASE_URL = `${import.meta.env.BASE_URL}data`;
@@ -50,6 +55,21 @@ export async function fetchFundSnapshot(query: FundQuery, signal?: AbortSignal):
     const data = await fetchStaticFunds();
     return createSnapshotFromStaticData(data, query) as FundSnapshot;
   }
+}
+
+export async function fetchFundSuggestions(
+  keyword: string,
+  signal?: AbortSignal
+): Promise<FundSearchOption[]> {
+  if (!canSearchFunds(keyword)) return [];
+  const snapshot = await fetchFundSnapshot({
+    keyword: keyword.trim(),
+    matchBy: "all",
+    market: "all",
+    sort: "name",
+    limit: 8
+  }, signal);
+  return toFundSearchOptions(snapshot.items);
 }
 
 export async function fetchFundDetail(code: string, signal?: AbortSignal): Promise<FundDetail> {
