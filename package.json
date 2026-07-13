@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc && vite build",
     "build:sites": "npm run build && node scripts/build-sites-worker.mjs",
-    "export:pages-data": "node scripts/export-pages-data.mjs",
+    "export:pages-data": "NODE_USE_ENV_PROXY=1 node scripts/export-pages-data.mjs",
     "test": "npm run build && node --test build/test/*.test.js",
     "start": "FUND_DATA_MODE=real node build/src/index.js",
     "web": "npm run build && FUND_DATA_MODE=real node build/src/web-server.js",
