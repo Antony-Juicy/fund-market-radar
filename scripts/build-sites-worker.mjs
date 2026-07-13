@@ -114,6 +114,10 @@ function filterFunds(items, url) {
 
 async function api(url) {
   if (url.pathname === "/api/market-overview") return json(await marketOverview());
+  if (url.pathname === "/api/funds-export") {
+    const items = await fundQuotes();
+    return json({ dataDate: items[0]?.dataDate || shanghaiDate(), updatedAt: new Date().toISOString(), isTradingDay: new Date().getDay() !== 0 && new Date().getDay() !== 6, items });
+  }
   if (url.pathname === "/api/funds") return json(filterFunds(await fundQuotes(), url));
   const detail = url.pathname.match(/^\\/api\\/funds\\/(\\d{6})$/);
   if (detail) {
