@@ -67,5 +67,7 @@ Codex 或其他 MCP Client 的配置示例：
 ## 文档
 
 - [中文链路文档](docs/mcp-web-chain.md)
+- [项目开发全流程与详细流程图](docs/project-development-flow.md)
+- [在 Obsidian 中打开项目全流程](obsidian://open?vault=Obsidian%20Vault&file=%E9%A1%B9%E7%9B%AE%2F%E5%85%AC%E5%8B%9F%E5%9F%BA%E9%87%91%E5%B8%82%E5%9C%BA%E9%9B%B7%E8%BE%BE-%E5%BC%80%E5%8F%91%E5%85%A8%E6%B5%81%E7%A8%8B)
 - [基金 MCP 设计说明](docs/superpowers/specs/2026-07-11-fund-market-mcp-design.md)
 - [基金 MCP 实施计划](docs/superpowers/plans/2026-07-11-fund-market-mcp-plan.md)
