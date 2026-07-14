@@ -53,6 +53,8 @@ async function getText(url) {
 }
 
 function number(value) {
+  if (value === "" || value === "-" || value == null) return undefined;
+  if (typeof value === "string" && value.trim() === "") return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }

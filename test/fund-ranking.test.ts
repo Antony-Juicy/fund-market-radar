@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseExchangeFundRankingText, parseOpenFundRankingText, shiftDate } from "../src/fund-service.js";
+import { parseExchangeFundRankingText, parseOpenFundRankingText, parsePublishedNumber, shiftDate } from "../src/fund-service.js";
 
 test("parses observed open-fund period returns from Eastmoney ranking data", () => {
   const text = 'var rankData = {datas:["001480,财通成长优选混合A,CTCZYXHHA,2026-07-10,8.412,8.412,-4.49,-8.56,3.08,68.31,109.46,335.18,379.59,391.36,111.57,741.2,2015-06-29,1,-13.7319,1.50%,0.15%,1,0.15%,1,296.61"],allRecords:1};';
@@ -28,6 +28,14 @@ test("ranking parser leaves missing returns absent instead of inventing values",
   const text = 'var rankData = {datas:["000001,测试基金,CSJJ,2026-07-10,1.0000,1.0000,,,,,,,,,,,2020-01-01,1,,0%,0%,1,0%,1,"],allRecords:1};';
 
   assert.deepEqual(parseOpenFundRankingText(text).get("000001"), {});
+});
+
+test("published fund values keep missing upstream fields absent instead of converting them to zero", () => {
+  assert.equal(parsePublishedNumber(""), undefined);
+  assert.equal(parsePublishedNumber("-"), undefined);
+  assert.equal(parsePublishedNumber(undefined), undefined);
+  assert.equal(parsePublishedNumber("0"), 0);
+  assert.equal(parsePublishedNumber("1.2345"), 1.2345);
 });
 
 test("shifts Shanghai market dates without crossing a UTC day boundary", () => {

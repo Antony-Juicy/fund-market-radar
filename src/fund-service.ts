@@ -109,8 +109,8 @@ async function fetchText(url: string, timeoutMs = 15_000): Promise<string> {
   } finally { clearTimeout(timer); }
 }
 
-function optionalNumber(value: string | undefined): number | undefined {
-  if (!value) return undefined;
+export function parsePublishedNumber(value: string | undefined | null): number | undefined {
+  if (value === undefined || value === null || value.trim() === "" || value === "-") return undefined;
   const parsed = Number(value.replace("%", ""));
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -125,10 +125,10 @@ export function parseOpenFundRankingText(text: string): Map<string, RankingRetur
   const result = new Map<string, RankingReturns>();
   for (const row of rankingRows(text)) {
     const values = {
-      today: optionalNumber(row[6]),
-      week: optionalNumber(row[7]),
-      month: optionalNumber(row[8]),
-      custom: optionalNumber(row[18])
+      today: parsePublishedNumber(row[6]),
+      week: parsePublishedNumber(row[7]),
+      month: parsePublishedNumber(row[8]),
+      custom: parsePublishedNumber(row[18])
     };
     result.set(row[0], Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined)));
   }
@@ -138,7 +138,7 @@ export function parseOpenFundRankingText(text: string): Map<string, RankingRetur
 export function parseExchangeFundRankingText(text: string): Map<string, RankingReturns> {
   const result = new Map<string, RankingReturns>();
   for (const row of rankingRows(text)) {
-    const values = { week: optionalNumber(row[6]), month: optionalNumber(row[7]) };
+    const values = { week: parsePublishedNumber(row[6]), month: parsePublishedNumber(row[7]) };
     result.set(row[0], Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined)));
   }
   return result;
@@ -238,16 +238,16 @@ async function fetchOpenFundQuotes(): Promise<FundQuote[]> {
   ]);
   const updatedAt = new Date().toISOString();
   return rows.flatMap((row) => {
-    const nav = Number(row[3]);
-    const change = Number(row[8]);
-    if (!/^\d{6}$/.test(row[0] ?? "") || !row[1] || !Number.isFinite(nav)) return [];
+    const nav = parsePublishedNumber(row[3]);
+    const change = parsePublishedNumber(row[8]);
+    if (!/^\d{6}$/.test(row[0] ?? "") || !row[1] || nav === undefined) return [];
     const current = currentRanking.get(row[0]);
     const previous = previousRanking.get(row[0]);
     return [{
       code: row[0], name: row[1], market: "off_exchange" as const, fundType: "开放式公募",
-      nav, changePercent: Number.isFinite(change) ? change : undefined,
+      nav, changePercent: change,
       periodChanges: current || previous ? {
-        today: Number.isFinite(change) ? change : current?.today,
+        today: change ?? current?.today,
         yesterday: previous?.custom,
         week: current?.week,
         half_month: current?.custom,

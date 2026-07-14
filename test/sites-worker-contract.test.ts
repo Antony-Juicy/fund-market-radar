@@ -25,3 +25,9 @@ test("Sites worker derives trading status from the returned data date", async ()
   assert.match(source, /function isCurrentTradingDate\(dataDate/);
   assert.match(source, /isTradingDay:\s*isCurrentTradingDate\(dataDate\)/);
 });
+
+test("Sites worker never converts unpublished fund values to zero", async () => {
+  const source = await workerSource();
+
+  assert.match(source, /value === "" \|\| value === "-" \|\| value == null/);
+});
