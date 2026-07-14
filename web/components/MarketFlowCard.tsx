@@ -3,7 +3,6 @@ import {
   Button,
   Card,
   Group,
-  Progress,
   Skeleton,
   Stack,
   Text,
@@ -19,7 +18,6 @@ import type { MarketOverview } from "../types";
 
 const money = (value: number, sign = false) =>
   `${sign && value >= 0 ? "+" : ""}${(value / 100_000_000).toFixed(1)} 亿`;
-const percent = (value: number) => `${value.toFixed(1)}%`;
 
 export function MarketFlowCard({
   data,
@@ -74,7 +72,7 @@ export function MarketFlowCard({
           </Group>
           <Group gap={0} wrap="nowrap" className="market-flow-metrics">
             {loading ? (
-              [1, 2, 3, 4].map((item) => (
+              [1, 2, 3].map((item) => (
                 <Skeleton key={item} width={82} height={28} />
               ))
             ) : data ? (
@@ -101,32 +99,6 @@ export function MarketFlowCard({
                   </Text>
                   <Text fw={800} c={data.netFlow >= 0 ? "red" : "teal"}>
                     {money(data.netFlow, true)}
-                  </Text>
-                </Stack>
-                <Stack gap={4} className="market-flow-metric market-flow-metric-ratio">
-                  <Text size="xs" c="dimmed">
-                    行业净流向占比
-                  </Text>
-                  <Progress
-                    value={100}
-                    size="sm"
-                    w={150}
-                    aria-label="净流入与净流出板块金额占比"
-                    className="market-flow-ratio-track"
-                  >
-                    <Progress.Section value={data.inflowRatio} color="red" />
-                    <Progress.Section value={data.outflowRatio} color="teal" />
-                  </Progress>
-                  <Group justify="space-between">
-                    <Text size="xs" c="red">
-                      流入 {percent(data.inflowRatio)}
-                    </Text>
-                    <Text size="xs" c="teal">
-                      流出 {percent(data.outflowRatio)}
-                    </Text>
-                  </Group>
-                  <Text size="xs" c="dimmed" className="market-flow-ratio-note">
-                    按行业净流向绝对值计算
                   </Text>
                 </Stack>
               </>
