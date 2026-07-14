@@ -61,8 +61,14 @@ function dateOf(timestamp) {
   return timestamp ? new Date(timestamp * 1000).toISOString() : new Date().toISOString();
 }
 
-function shanghaiDate() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
+function shanghaiDate(timestamp = Date.now()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date(timestamp));
+}
+
+function isCurrentTradingDate(dataDate, now = Date.now()) {
+  const date = new Date(now);
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Shanghai", weekday: "short" }).format(date);
+  return dataDate === shanghaiDate(now) && weekday !== "Sat" && weekday !== "Sun";
 }
 
 async function marketOverview() {
@@ -74,13 +80,15 @@ async function marketOverview() {
   }));
   const params = new URLSearchParams({ pn: "1", pz: "500", po: "1", np: "1", ut: "b2884a393a59ad64002292a3e90d46a5", fltt: "2", invt: "2", fid0: "f62", fs: "m:90 t:2", stat: "1", fields: "f12,f14,f3,f62,f124" });
   const payload = await getJson("https://push2delay.eastmoney.com/api/qt/clist/get?" + params);
-  const sectors = (payload.data?.diff || []).map((row) => ({ name: String(row.f14 || row.f12 || "未知板块"), amount: number(row.f62), changePercent: number(row.f3) })).filter((item) => typeof item.amount === "number");
+  const sectors = (payload.data?.diff || []).map((row) => ({ name: String(row.f14 || row.f12 || "未知板块"), amount: number(row.f62), changePercent: number(row.f3), updatedAt: number(row.f124) })).filter((item) => typeof item.amount === "number");
   const positive = sectors.filter((item) => item.amount > 0).sort((a, b) => b.amount - a.amount);
   const negative = sectors.filter((item) => item.amount < 0).sort((a, b) => a.amount - b.amount);
   const inflowTotal = positive.reduce((sum, item) => sum + item.amount, 0);
   const outflowTotal = Math.abs(negative.reduce((sum, item) => sum + item.amount, 0));
   const gross = inflowTotal + outflowTotal;
-  return { indices, inflowTotal, outflowTotal, netFlow: inflowTotal - outflowTotal, inflowRatio: gross ? inflowTotal / gross * 100 : 0, outflowRatio: gross ? outflowTotal / gross * 100 : 0, inflowSectors: positive.slice(0, 5), outflowSectors: negative.slice(0, 5), dataDate: shanghaiDate(), updatedAt: new Date().toISOString(), source, flowBasis: "行业主力净流向正值与负值分别汇总，比例按绝对值合计计算" };
+  const latestTimestamp = Math.max(0, ...sectors.map((item) => item.updatedAt || 0));
+  const cleanSector = ({ updatedAt: _updatedAt, ...item }) => item;
+  return { indices, inflowTotal, outflowTotal, netFlow: inflowTotal - outflowTotal, inflowRatio: gross ? inflowTotal / gross * 100 : 0, outflowRatio: gross ? outflowTotal / gross * 100 : 0, inflowSectors: positive.slice(0, 5).map(cleanSector), outflowSectors: negative.slice(0, 5).map(cleanSector), dataDate: shanghaiDate(latestTimestamp * 1000), updatedAt: dateOf(latestTimestamp), source, flowBasis: "行业主力净流向正值与负值分别汇总，比例按绝对值合计计算" };
 }
 
 function parseOpenFunds(text) {
@@ -100,7 +108,7 @@ function etfUrl(page) {
 }
 
 async function loadFundQuotes() {
-  const [firstEtfPayload, openText] = await Promise.all([getJson(etfUrl(1)), getText("https://fund.eastmoney.com/Data/Fund_JJJZ_Data.aspx?t=1&lx=1&sort=zdf,desc&page=1,5000&dt=" + Date.now())]);
+  const [firstEtfPayload, openText] = await Promise.all([getJson(etfUrl(1)), getText("https://fund.eastmoney.com/Data/Fund_JJJZ_Data.aspx?t=1&lx=1&sort=zdf,desc&page=1,50000&dt=" + Date.now())]);
   const pageCount = Math.max(1, Math.ceil(Number(firstEtfPayload.data?.total || 0) / ETF_PAGE_SIZE));
   const remainingPayloads = await Promise.all(Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) => getJson(etfUrl(index + 2))));
   const etfRows = [firstEtfPayload, ...remainingPayloads].flatMap((payload) => payload.data?.diff || []);
@@ -133,14 +141,16 @@ function filterFunds(items, url) {
     return fields.some((field) => String(field || "").toLowerCase().includes(keyword));
   };
   const filtered = items.filter(matches).sort((a, b) => sort === "name" ? String(a.name).localeCompare(String(b.name), "zh-CN") : (Number(b.changePercent || -Infinity) - Number(a.changePercent || -Infinity)) * (sort === "change_asc" ? -1 : 1));
-  return { keyword: url.searchParams.get("keyword") || "", matchBy, market, sort, limit, dataDate: items[0]?.dataDate || shanghaiDate(), updatedAt: new Date().toISOString(), isTradingDay: new Date().getDay() !== 0 && new Date().getDay() !== 6, items: filtered.slice(0, limit) };
+  const dataDate = items[0]?.dataDate || shanghaiDate();
+  return { keyword: url.searchParams.get("keyword") || "", matchBy, market, sort, limit, dataDate, updatedAt: new Date().toISOString(), isTradingDay: isCurrentTradingDate(dataDate), items: filtered.slice(0, limit) };
 }
 
 async function api(url) {
   if (url.pathname === "/api/market-overview") return json(await marketOverview());
   if (url.pathname === "/api/funds-export") {
     const items = await fundQuotes();
-    return json({ dataDate: items[0]?.dataDate || shanghaiDate(), updatedAt: new Date().toISOString(), isTradingDay: new Date().getDay() !== 0 && new Date().getDay() !== 6, items });
+    const dataDate = items[0]?.dataDate || shanghaiDate();
+    return json({ dataDate, updatedAt: new Date().toISOString(), isTradingDay: isCurrentTradingDate(dataDate), items });
   }
   if (url.pathname === "/api/funds") return json(filterFunds(await fundQuotes(), url));
   const detail = url.pathname.match(/^\\/api\\/funds\\/(\\d{6})$/);
