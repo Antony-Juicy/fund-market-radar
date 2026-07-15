@@ -1,7 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { FundService, PythonFundAdapter } from "../src/fund-service.js";
+import { EastmoneyFundAdapter, FundService, PythonFundAdapter } from "../src/fund-service.js";
+import type { FundQuote } from "../src/fund-types.js";
+
+const quote: FundQuote = {
+  code: "510300",
+  name: "沪深300ETF",
+  market: "on_exchange",
+  fundType: "ETF",
+  dataDate: "2026-07-15",
+  updatedAt: "2026-07-15T15:00:00+08:00",
+  isTradingDay: true,
+  officialNavAvailable: true,
+  source: "test"
+};
 
 test("Python adapter fixed sample returns both exchange markets", async () => {
   const service = new FundService(new PythonFundAdapter(undefined, undefined, true));
@@ -27,4 +40,21 @@ test("fund service applies keyword and market filters", async () => {
   const semiconductor = result.items.find((item) => item.code === "012345");
   assert.equal(semiconductor?.code, "012345");
   assert.deepEqual(semiconductor?.matchedBy, ["行业"]);
+});
+
+test("Eastmoney adapter marks unrequested research as unavailable", async () => {
+  const adapter = new EastmoneyFundAdapter();
+  adapter.listQuotes = async () => [quote];
+
+  const detail = await adapter.getDetail("510300");
+
+  assert.deepEqual(detail?.availability, { holdings: "unavailable", performance: "unavailable" });
+});
+
+test("Python sample adapter keeps undisclosed research as empty", async () => {
+  const adapter = new PythonFundAdapter(undefined, undefined, true);
+
+  const detail = await adapter.getDetail("510300");
+
+  assert.deepEqual(detail?.availability, { holdings: "empty", performance: "empty" });
 });

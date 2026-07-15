@@ -62,7 +62,7 @@ export class EastmoneyFundAdapter implements FundDataAdapter {
       stockHoldings: [],
       performanceHistory: [],
       performanceSource: "东方财富基金历史净值",
-      availability: { holdings: "empty", performance: "empty" }
+      availability: { holdings: "unavailable", performance: "unavailable" }
     } : undefined;
   }
 }
