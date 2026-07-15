@@ -26,7 +26,7 @@ export function publishedNumber(value: unknown): number | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
   const text = String(value).trim();
   if (text === "" || text === "-") return undefined;
-  const parsed = Number(text.replace(/%$/, ""));
+  const parsed = Number(text.replace(/,/g, "").replace(/%$/, ""));
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
@@ -100,15 +100,22 @@ export function parseFundHoldingsResponse(text: string): { items: FundStockHoldi
   return { items: items.slice(0, 10), reportDate };
 }
 
-function formatDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+function shanghaiBusinessDate(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
-function historyStartDate(today: Date): string {
-  const start = new Date(today);
+function historyStartDate(today: string): string {
+  const start = new Date(`${today}T00:00:00Z`);
   start.setUTCFullYear(start.getUTCFullYear() - 1);
   start.setUTCDate(start.getUTCDate() - 10);
-  return formatDate(start);
+  return start.toISOString().slice(0, 10);
 }
 
 export class EastmoneyFundDetailSource {
@@ -135,12 +142,13 @@ export class EastmoneyFundDetailSource {
   }
 
   private async load(code: string, today: Date): Promise<FundResearchDetail> {
+    const businessDate = shanghaiBusinessDate(today);
     const historyParams = new URLSearchParams({
       fundCode: code,
       pageIndex: "1",
       pageSize: "400",
-      startDate: historyStartDate(today),
-      endDate: formatDate(today)
+      startDate: historyStartDate(businessDate),
+      endDate: businessDate
     });
     const holdingsParams = new URLSearchParams({ type: "jjcc", code, topline: "10", year: "", month: "" });
     const [historyResult, holdingsResult] = await Promise.allSettled([

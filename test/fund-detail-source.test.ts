@@ -4,10 +4,11 @@ import test from "node:test";
 import {
   EastmoneyFundDetailSource,
   parseFundHistoryResponse,
-  parseFundHoldingsResponse
+  parseFundHoldingsResponse,
+  publishedNumber
 } from "../src/fund-detail-source.js";
 
-const HOLDINGS_FIXTURE = `var apidata={ content:"<div class='box'><h4>2026年1季度股票投资明细 截止至：<font>2026-03-31</font></h4><table><tbody><tr><td>1</td><td><a>001309</a></td><td><a>德明利</a></td><td></td><td></td><td></td><td>1.05%</td><td>0.09</td><td>34.21</td></tr><tr><td>2</td><td><a>603588</a></td><td><a>高能环境</a></td><td></td><td></td><td></td><td>0.98%</td><td>0.12</td><td>31.40</td></tr></tbody></table></div>",arryear:[2026] };`;
+const HOLDINGS_FIXTURE = `var apidata={ content:"<div class=\\"box\\"><h4>2026年1季度股票投资明细 截止至：<font>2026-03-31</font></h4><table><tbody><tr><td>1</td><td><a>001309</a></td><td><a>德明利</a></td><td></td><td></td><td></td><td>1.05%</td><td>2,126.97</td><td>854,404.57</td></tr><tr><td>2</td><td><a>603588</a></td><td><a>高能环境</a></td><td></td><td></td><td></td><td>0.98%</td><td>0.12</td><td>31.40</td></tr></tbody></table></div>",arryear:[2026] };`;
 const HISTORY_FIXTURE = JSON.stringify({
   Data: { LSJZList: [
     { FSRQ: "2026-07-15", DWJZ: "1.5893", LJJZ: "1.6893" },
@@ -51,10 +52,19 @@ test("parses the latest disclosed top holdings and report date", () => {
     stockCode: "001309",
     stockName: "德明利",
     navRatio: 1.05,
-    sharesWan: 0.09,
-    marketValueWan: 34.21,
+    sharesWan: 2126.97,
+    marketValueWan: 854404.57,
     reportDate: "2026-03-31"
   });
+});
+
+test("parses published thousands separators without treating blanks or invalid values as zero", () => {
+  assert.equal(publishedNumber("2,126.97"), 2126.97);
+  assert.equal(publishedNumber("854,404.57"), 854404.57);
+  assert.equal(publishedNumber(""), undefined);
+  assert.equal(publishedNumber("-"), undefined);
+  assert.equal(publishedNumber("not published"), undefined);
+  assert.equal(publishedNumber(null), undefined);
 });
 
 test("reuses one in-flight detail load for concurrent requests", async () => {
@@ -77,6 +87,28 @@ test("reuses one in-flight detail load for concurrent requests", async () => {
   assert.equal(calls, 2);
   release();
   await first;
+});
+
+test("uses Shanghai business dates and exact Eastmoney query parameters", async () => {
+  const urls: string[] = [];
+  const fetch: typeof globalThis.fetch = async (input) => {
+    const url = String(input);
+    urls.push(url);
+    return url.startsWith("https://api.fund.eastmoney.com/")
+      ? response(HISTORY_FIXTURE)
+      : response(HOLDINGS_FIXTURE);
+  };
+  const source = new EastmoneyFundDetailSource({
+    fetch,
+    clock: () => new Date("2026-07-14T16:30:00.000Z")
+  });
+
+  await source.getResearchDetail("510300");
+
+  assert.deepEqual(urls, [
+    "https://api.fund.eastmoney.com/f10/lsjz?fundCode=510300&pageIndex=1&pageSize=400&startDate=2025-07-05&endDate=2026-07-15",
+    "https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=510300&topline=10&year=&month="
+  ]);
 });
 
 test("retains holdings when history is unavailable", async () => {
