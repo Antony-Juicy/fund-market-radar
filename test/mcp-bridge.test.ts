@@ -39,6 +39,9 @@ test(
       assert.ok(result.items.some((item) => item.code === "012345"));
       const detail = await connection.callFundDetail("510300");
       assert.equal(detail?.name, "沪深300ETF");
+      assert.deepEqual(detail?.stockHoldings, []);
+      assert.deepEqual(detail?.performanceHistory, []);
+      assert.deepEqual(detail?.availability, { holdings: "empty", performance: "empty" });
     } finally {
       await connection.close();
     }

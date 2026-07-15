@@ -64,7 +64,7 @@ server.registerTool(
   "fund_detail",
   {
     title: "查询基金详情",
-    description: "查询单只国内公募基金的最新行情、净值、区间收益与数据来源。",
+    description: "查询单只国内公募基金的最新行情、净值、最新披露的前十大持仓、历史净值表现与数据来源。",
     inputSchema: {
       code: z.string().regex(/^\d{6}$/).describe("六位基金代码")
     }

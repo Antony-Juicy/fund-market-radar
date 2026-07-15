@@ -7,6 +7,7 @@ import {
   createWebServer,
   type WebServerOptions
 } from "../src/web-server.js";
+import type { FundDetail } from "../src/fund-types.js";
 
 async function withServer(
   options: WebServerOptions,
@@ -107,6 +108,33 @@ test("GET /api/funds rejects invalid query parameters", async () => {
       assert.match((await response.json() as { error: string }).error, /between 1 and 100/);
     }
   );
+});
+
+test("GET /api/funds/:code returns holdings and performance history", async () => {
+  const detail: FundDetail = {
+    code: "561780", name: "1000增强ETF博时", market: "on_exchange", fundType: "ETF",
+    price: 1.6063, changePercent: 2.12, dataDate: "2026-07-14",
+    updatedAt: "2026-07-14T15:00:00+08:00", isTradingDay: true,
+    officialNavAvailable: true, source: "东方财富 ETF 行情", industryAllocation: [],
+    stockHoldings: [{ rank: 1, stockCode: "001309", stockName: "德明利", navRatio: 1.05, reportDate: "2026-03-31" }],
+    holdingsReportDate: "2026-03-31",
+    performanceHistory: [{ date: "2026-07-14", value: 1.6063 }, { date: "2026-07-15", value: 1.5893 }],
+    performanceSource: "东方财富基金历史净值",
+    availability: { holdings: "available", performance: "available" }
+  };
+
+  await withServer({
+    callHello: async () => ({ content: [] }),
+    callFundDetail: async () => detail
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/funds/561780`);
+    const body = await response.json() as FundDetail;
+
+    assert.equal(response.status, 200);
+    assert.equal(body.stockHoldings[0]?.stockCode, "001309");
+    assert.equal(body.performanceHistory.at(-1)?.date, "2026-07-15");
+    assert.equal(body.availability.holdings, "available");
+  });
 });
 
 test("unknown routes return 404", async () => {

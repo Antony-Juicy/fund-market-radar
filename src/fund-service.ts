@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 
+import { EastmoneyFundDetailSource } from "./fund-detail-source.js";
 import { filterAndSortFunds } from "./fund-helpers.js";
-import type { FundDetail, FundMarket, FundMatchBy, FundQuote, FundSnapshot, FundSort } from "./fund-types.js";
+import type { FundDetail, FundMarket, FundMatchBy, FundQuote, FundResearchDetail, FundSnapshot, FundSort } from "./fund-types.js";
 
 export interface FundDataAdapter {
   listQuotes(): Promise<FundQuote[]>;
@@ -37,6 +38,10 @@ export class PythonFundAdapter implements FundDataAdapter {
 export class EastmoneyFundAdapter implements FundDataAdapter {
   private cache?: { expiresAt: number; quotes: Promise<FundQuote[]> };
 
+  constructor(
+    private readonly detailSource: Pick<EastmoneyFundDetailSource, "getResearchDetail"> = new EastmoneyFundDetailSource()
+  ) {}
+
   async listQuotes(): Promise<FundQuote[]> {
     if (this.cache && this.cache.expiresAt > Date.now()) return this.cache.quotes;
 
@@ -56,14 +61,10 @@ export class EastmoneyFundAdapter implements FundDataAdapter {
 
   async getDetail(code: string): Promise<FundDetail | undefined> {
     const quote = (await this.listQuotes()).find((item) => item.code === code);
-    return quote ? {
-      ...quote,
-      industryAllocation: [],
-      stockHoldings: [],
-      performanceHistory: [],
-      performanceSource: "东方财富基金历史净值",
-      availability: { holdings: "unavailable", performance: "unavailable" }
-    } : undefined;
+    if (!quote) return undefined;
+
+    const research = await this.detailSource.getResearchDetail(code);
+    return mergeQuoteAndResearch(quote, research);
   }
 }
 
@@ -88,6 +89,10 @@ export class FundService {
 
 interface AdapterPayload { quotes: unknown[]; }
 interface RankingReturns { today?: number; week?: number; month?: number; custom?: number; }
+
+function mergeQuoteAndResearch(quote: FundQuote, research: FundResearchDetail): FundDetail {
+  return { ...research, ...quote, industryAllocation: [] };
+}
 
 async function runPythonAdapter(command: string, scriptPath: string, sample: boolean): Promise<AdapterPayload> {
   return new Promise((resolvePayload, rejectPayload) => {
