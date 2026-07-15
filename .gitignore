@@ -3,4 +3,5 @@ build/
 dist/
 .DS_Store
 .superpowers/
+.worktrees/
 .venv/
