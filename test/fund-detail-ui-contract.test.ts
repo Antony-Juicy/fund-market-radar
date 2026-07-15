@@ -13,6 +13,9 @@ test("keeps detail data mounted until the drawer exit transition ends", async ()
   assert.match(app, /<FundDetailPanel opened=\{detailOpened\}/);
   assert.match(app, /onExitTransitionEnd=\{[^}]*setDetail\(undefined\)/);
   assert.doesNotMatch(app, /onClose=\{\(\) => \{[^}]*setDetail\(undefined\)/s);
+  assert.match(app, /detailClosingRef/);
+  assert.doesNotMatch(app, /onClose=\{\(\) => \{[^}]*setDetailLoading\(false\)/s);
+  assert.match(app, /onExitTransitionEnd=\{[^}]*setDetailLoading\(false\)/);
   assert.match(panel, /<Drawer opened=\{opened\}/);
   assert.match(panel, /onExitTransitionEnd=\{onExitTransitionEnd\}/);
 });

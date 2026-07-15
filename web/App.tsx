@@ -40,6 +40,7 @@ export function App() {
   const controllerRef = useRef<AbortController>();
   const suggestionControllerRef = useRef<AbortController>();
   const detailControllerRef = useRef<AbortController>();
+  const detailClosingRef = useRef(false);
 
   const runQuery = async (nextQuery = query) => {
     controllerRef.current?.abort();
@@ -118,10 +119,11 @@ export function App() {
     setTab(next);
     const nextQuery = withResearchTab(query, next); setQuery(nextQuery); void runQuery(nextQuery);
   };
-  const reset = () => { suggestionControllerRef.current?.abort(); detailControllerRef.current?.abort(); setSuggestions([]); setSuggestionError(undefined); setQuery(initialQuery); setTab("all"); setPeriod("today"); setDetailOpened(false); setDetailLoading(false); void runQuery(initialQuery); };
+  const reset = () => { suggestionControllerRef.current?.abort(); detailClosingRef.current = true; detailControllerRef.current?.abort(); setSuggestions([]); setSuggestionError(undefined); setQuery(initialQuery); setTab("all"); setPeriod("today"); setDetailOpened(false); void runQuery(initialQuery); };
   const openDetail = async (code: string) => {
     detailControllerRef.current?.abort();
     const controller = new AbortController(); detailControllerRef.current = controller;
+    detailClosingRef.current = false;
     setDetailOpened(true);
     setDetailLoading(true);
     try {
@@ -130,10 +132,11 @@ export function App() {
     } catch (caught) {
       if ((caught as Error).name !== "AbortError" && isActiveRequest(controller, detailControllerRef.current)) {
         setError(caught instanceof Error ? caught.message : "详情读取失败");
+        detailClosingRef.current = true;
         setDetailOpened(false);
       }
     } finally {
-      if (detailControllerRef.current === controller) setDetailLoading(false);
+      if (detailControllerRef.current === controller && !detailClosingRef.current) setDetailLoading(false);
     }
   };
   const focusFund = (code: string) => { setHighlightCode(code); document.getElementById(`fund-row-${code}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); window.setTimeout(() => setHighlightCode((current) => current === code ? undefined : current), 2200); };
@@ -148,7 +151,7 @@ export function App() {
       <Card withBorder radius="lg" padding="sm" className="chain-bar"><Group justify="space-between"><Group gap="xs"><IconRoute size={18} color="#2563eb" /><Text size="sm" fw={700}>MCP 调用链路</Text><Text size="xs" c="dimmed">调试模式</Text></Group><Button variant="subtle" size="xs" onClick={() => setChainOpen(true)}>查看调用步骤</Button></Group></Card>
     </Stack></Container></AppShell.Main>
     <McpChainDrawer opened={chainOpen} onClose={() => setChainOpen(false)} activeStep={loading ? stage : 4} />
-    <FundDetailPanel opened={detailOpened} detail={detail} loading={detailLoading} onClose={() => { detailControllerRef.current?.abort(); setDetailOpened(false); setDetailLoading(false); }} onExitTransitionEnd={() => { if (!detailOpened) setDetail(undefined); }} />
+    <FundDetailPanel opened={detailOpened} detail={detail} loading={detailLoading} onClose={() => { detailClosingRef.current = true; detailControllerRef.current?.abort(); setDetailOpened(false); }} onExitTransitionEnd={() => { if (!detailOpened) { setDetail(undefined); setDetailLoading(false); detailClosingRef.current = false; } }} />
     {error && <Modal opened onClose={() => setError(undefined)} title="请求未完成" centered><Group align="flex-start"><IconX color="red" /><Text>{error}</Text></Group></Modal>}
   </AppShell>;
 }

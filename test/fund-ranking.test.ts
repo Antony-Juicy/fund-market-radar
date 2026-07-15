@@ -30,6 +30,13 @@ test("ranking parser leaves missing returns absent instead of inventing values",
   assert.deepEqual(parseOpenFundRankingText(text).get("000001"), {});
 });
 
+test("ranking parsers treat Eastmoney access denial as optional data", () => {
+  const denied = 'var rankData ={ErrCode:-999,Data:"无访问权限"}';
+
+  assert.equal(parseOpenFundRankingText(denied).size, 0);
+  assert.equal(parseExchangeFundRankingText(denied).size, 0);
+});
+
 test("published fund values keep missing upstream fields absent instead of converting them to zero", () => {
   assert.equal(parsePublishedNumber(""), undefined);
   assert.equal(parsePublishedNumber("-"), undefined);

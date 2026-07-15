@@ -108,7 +108,7 @@ test("GitHub Pages exposes unavailable research instead of static fake detail", 
   }
 });
 
-test("local cold detail uses the longer detail timeout while snapshots stay at four seconds", async () => {
+test("local cold requests allow the real Eastmoney adapter to finish", async () => {
   const timeouts: number[] = [];
   const api = await browserApi(async (input) => {
     const url = String(input);
@@ -137,7 +137,7 @@ test("local cold detail uses the longer detail timeout while snapshots stay at f
     });
     await api.fetchFundDetail("510300");
 
-    assert.equal(timeouts[0], 4_000);
+    assert.equal(timeouts[0], 30_000);
     assert.ok(
       (timeouts[1] ?? 0) > 15_000,
       "detail timeout must leave response overhead beyond the server's 15 second upstream window"

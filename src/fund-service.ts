@@ -140,6 +140,7 @@ export function parsePublishedNumber(value: string | undefined | null): number |
 
 function rankingRows(text: string): string[][] {
   const match = text.match(/datas:\[(.*?)\],allRecords/s);
+  if (!match && /ErrCode\s*:\s*-999/.test(text) && /无访问权限/.test(text)) return [];
   if (!match) throw new Error("Fund-ranking response could not be parsed.");
   return (JSON.parse(`[${match[1]}]`) as string[]).map((row) => row.split(","));
 }
