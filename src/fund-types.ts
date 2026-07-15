@@ -43,6 +43,42 @@ export interface FundSnapshot {
   items: FundQuote[];
 }
 
-export interface FundDetail extends FundQuote {
+export type FundPerformancePeriod = "half_month" | "month" | "quarter" | "year" | "year_to_date";
+
+export interface FundPerformancePoint {
+  date: string;
+  value: number;
+  unitNav?: number;
+  cumulativeNav?: number;
+}
+
+export interface FundPerformanceSeriesPoint extends FundPerformancePoint {
+  returnPercent: number;
+}
+
+export interface FundStockHolding {
+  rank: number;
+  stockCode: string;
+  stockName: string;
+  navRatio: number;
+  sharesWan?: number;
+  marketValueWan?: number;
+  reportDate: string;
+}
+
+export interface FundDetailAvailability {
+  holdings: "available" | "empty" | "unavailable";
+  performance: "available" | "empty" | "unavailable";
+}
+
+export interface FundResearchDetail {
+  stockHoldings: FundStockHolding[];
+  holdingsReportDate?: string;
+  performanceHistory: FundPerformancePoint[];
+  performanceSource: string;
+  availability: FundDetailAvailability;
+}
+
+export interface FundDetail extends FundQuote, Partial<FundResearchDetail> {
   industryAllocation: FundIndustryAllocation[];
 }

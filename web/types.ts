@@ -11,11 +11,35 @@ export interface FundQuote {
   periodChanges?: Partial<Record<PeriodKey, number>>;
   dataDate: string; updatedAt: string; source: string; flowBasis: string;
 }
+
+export type FundPerformancePeriod = "half_month" | "month" | "quarter" | "year" | "year_to_date";
+export interface FundPerformancePoint { date: string; value: number; unitNav?: number; cumulativeNav?: number; }
+export interface FundPerformanceSeriesPoint extends FundPerformancePoint { returnPercent: number; }
+export interface FundStockHolding {
+  rank: number;
+  stockCode: string;
+  stockName: string;
+  navRatio: number;
+  sharesWan?: number;
+  marketValueWan?: number;
+  reportDate: string;
+}
+export interface FundDetailAvailability {
+  holdings: "available" | "empty" | "unavailable";
+  performance: "available" | "empty" | "unavailable";
+}
+export interface FundResearchDetail {
+  stockHoldings: FundStockHolding[];
+  holdingsReportDate?: string;
+  performanceHistory: FundPerformancePoint[];
+  performanceSource: string;
+  availability: FundDetailAvailability;
+}
 export interface FundSnapshot {
   keyword: string; matchBy: FundMatchBy; market: FundMarket; sort: FundSort; limit: number;
   dataDate: string; updatedAt: string; items: FundQuote[];
 }
-export interface FundDetail extends FundQuote { industryAllocation: Array<{ industry: string; ratio: number; reportDate: string }>; }
+export interface FundDetail extends FundQuote, Partial<FundResearchDetail> { industryAllocation: Array<{ industry: string; ratio: number; reportDate: string }>; }
 export interface FundQuery { keyword: string; matchBy: FundMatchBy; market: FundMarket; sort: FundSort; limit: number; }
 export interface MarketIndexQuote { code: string; name: string; value: number; changePercent: number; }
 export interface SectorFlow { name: string; amount: number; changePercent?: number; }
