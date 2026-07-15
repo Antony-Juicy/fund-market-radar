@@ -1,7 +1,11 @@
+import { lazy, Suspense } from "react";
 import { Badge, Drawer, Group, Skeleton, Stack, Text, Title } from "@mantine/core";
 import type { FundDetail } from "../types";
 import { FundHoldingsList } from "./FundHoldingsList";
-import { FundPerformanceChart } from "./FundPerformanceChart";
+
+const FundPerformanceChart = lazy(() =>
+  import("./FundPerformanceChart").then((module) => ({ default: module.FundPerformanceChart }))
+);
 
 const formatChange = (value: number | undefined) => value === undefined ? "—" : `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
 
@@ -31,11 +35,19 @@ function DetailSkeleton() {
   </div>;
 }
 
-export function FundDetailPanel({ detail, loading, onClose }: { detail?: FundDetail; loading: boolean; onClose: () => void }) {
-  return <Drawer opened={Boolean(detail) || loading} onClose={onClose} title="基金详情" position="right" size={560} lockScroll={false} className="detail-drawer">
+function PerformanceChartFallback() {
+  return <section className="detail-section fund-performance-section" aria-label="业绩曲线加载中">
+    <Group justify="space-between"><Skeleton height={22} width={90} /><Skeleton height={34} width={72} /></Group>
+    <Skeleton height={30} mt="md" />
+    <Skeleton height={240} mt="sm" />
+  </section>;
+}
+
+export function FundDetailPanel({ opened, detail, loading, onClose, onExitTransitionEnd }: { opened: boolean; detail?: FundDetail; loading: boolean; onClose: () => void; onExitTransitionEnd: () => void }) {
+  return <Drawer opened={opened} onClose={onClose} onExitTransitionEnd={onExitTransitionEnd} title="基金详情" position="right" size={560} lockScroll={false} className="detail-drawer">
     {loading ? <DetailSkeleton /> : detail ? <div className="fund-detail-content">
       <FundSummary detail={detail} />
-      <FundPerformanceChart detail={detail} />
+      <Suspense fallback={<PerformanceChartFallback />}><FundPerformanceChart detail={detail} /></Suspense>
       <FundHoldingsList detail={detail} />
       <Stack gap={3} className="fund-detail-footnote"><Text size="xs" c="dimmed">持仓为季度披露数据，并非实时持仓；数据仅供研究比较。</Text><Text size="xs" c="dimmed">数据来源：{detail.source}{detail.performanceSource ? ` / ${detail.performanceSource}` : ""}</Text></Stack>
     </div> : null}

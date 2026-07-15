@@ -15,7 +15,7 @@ const DETAIL_API_BASE_URL = String(
 const STATIC_DATA_BASE_URL = `${import.meta.env.BASE_URL}data`;
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
 const LIVE_REQUEST_TIMEOUT_MS = 4_000;
-const DETAIL_REQUEST_TIMEOUT_MS = 15_000;
+const DETAIL_REQUEST_TIMEOUT_MS = 20_000;
 const PREFER_STATIC_DATA = shouldPreferStaticData(window.location.hostname);
 let staticFundsPromise: Promise<FundSnapshot> | undefined;
 
@@ -38,8 +38,12 @@ async function fetchJson<T>(url: string, signal?: AbortSignal, timeoutMs?: numbe
   }
 }
 
-async function fetchLive<T>(path: string, signal?: AbortSignal): Promise<T> {
-  return fetchJson<T>(apiUrl(path), signal, LIVE_REQUEST_TIMEOUT_MS);
+async function fetchLive<T>(
+  path: string,
+  signal?: AbortSignal,
+  timeoutMs = LIVE_REQUEST_TIMEOUT_MS
+): Promise<T> {
+  return fetchJson<T>(apiUrl(path), signal, timeoutMs);
 }
 
 async function fetchDynamicFundDetail(code: string, signal?: AbortSignal): Promise<FundDetail> {
@@ -129,7 +133,7 @@ export async function fetchFundDetail(code: string, signal?: AbortSignal): Promi
     }
   }
   try {
-    return await fetchLive<FundDetail>(`/api/funds/${code}`, signal);
+    return await fetchLive<FundDetail>(`/api/funds/${code}`, signal, DETAIL_REQUEST_TIMEOUT_MS);
   } catch (error) {
     if (signal?.aborted) throw error;
     const data = await fetchStaticFunds();

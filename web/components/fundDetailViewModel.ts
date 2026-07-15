@@ -25,6 +25,11 @@ export interface PerformanceViewModel {
   message?: string;
 }
 
+export function formatPerformanceAnnouncement(point: FundPerformanceSeriesPoint): string {
+  const totalReturn = `${point.returnPercent > 0 ? "+" : ""}${point.returnPercent.toFixed(2)}%`;
+  return `${point.date}，真实净值 ${point.value.toFixed(4)}，累计收益 ${totalReturn}`;
+}
+
 export function buildPerformanceViewModel(
   history: FundPerformancePoint[],
   period: FundPerformancePeriod,

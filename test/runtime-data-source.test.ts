@@ -30,17 +30,39 @@ const staticSnapshot = {
   dataDate: "2026-07-15", updatedAt: "2026-07-15T08:00:00.000Z", items: [staticQuote]
 };
 
-async function pagesApi(fetchImplementation: typeof fetch) {
+type BrowserApiOptions = {
+  hostname?: string;
+  onTimeout?: (timeoutMs: number) => void;
+};
+
+async function browserApi(fetchImplementation: typeof fetch, options: BrowserApiOptions = {}) {
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
   globalThis.fetch = fetchImplementation;
   Object.assign(globalThis, { window: {
-    location: { hostname: "antony-juicy.github.io" }, setTimeout, clearTimeout
+    location: { hostname: options.hostname ?? "antony-juicy.github.io" },
+    setTimeout: (handler: TimerHandler, timeoutMs?: number) => {
+      options.onTimeout?.(timeoutMs ?? 0);
+      return setTimeout(handler, timeoutMs);
+    },
+    clearTimeout
   } });
-  const server = await createServer({ logLevel: "error", server: { middlewareMode: true, hmr: false, ws: false }, appType: "custom" });
+  const server = await createServer({
+    logLevel: "error",
+    optimizeDeps: { noDiscovery: true },
+    server: { middlewareMode: true, hmr: false, ws: false },
+    appType: "custom"
+  });
   const module = await server.ssrLoadModule("/api.ts");
   return {
     fetchFundDetail: module.fetchFundDetail as (code: string) => Promise<unknown>,
+    fetchFundSnapshot: module.fetchFundSnapshot as (query: {
+      keyword: string;
+      matchBy: "all";
+      market: "all";
+      sort: "change_desc";
+      limit: number;
+    }) => Promise<unknown>,
     restore: async () => {
       await server.close();
       globalThis.fetch = originalFetch;
@@ -50,7 +72,7 @@ async function pagesApi(fetchImplementation: typeof fetch) {
 }
 
 test("GitHub Pages keeps static identity while using dynamic detail research", async () => {
-  const api = await pagesApi(async (input) => {
+  const api = await browserApi(async (input) => {
     const url = String(input);
     if (url.includes("/data/funds.json")) return new Response(JSON.stringify(staticSnapshot));
     if (url.includes("/api/funds/510300")) return new Response(JSON.stringify({
@@ -69,7 +91,7 @@ test("GitHub Pages keeps static identity while using dynamic detail research", a
 });
 
 test("GitHub Pages exposes unavailable research instead of static fake detail", async () => {
-  const api = await pagesApi(async (input) => {
+  const api = await browserApi(async (input) => {
     const url = String(input);
     if (url.includes("/data/funds.json")) return new Response(JSON.stringify(staticSnapshot));
     if (url.includes("/api/funds/510300")) return new Response(JSON.stringify({ error: "unavailable" }), { status: 502 });
@@ -81,6 +103,45 @@ test("GitHub Pages exposes unavailable research instead of static fake detail", 
     assert.deepEqual(detail.stockHoldings, []);
     assert.deepEqual(detail.performanceHistory, []);
     assert.deepEqual(detail.availability, { holdings: "unavailable", performance: "unavailable" });
+  } finally {
+    await api.restore();
+  }
+});
+
+test("local cold detail uses the longer detail timeout while snapshots stay at four seconds", async () => {
+  const timeouts: number[] = [];
+  const api = await browserApi(async (input) => {
+    const url = String(input);
+    if (url.includes("/api/funds?")) return new Response(JSON.stringify(staticSnapshot));
+    if (url.endsWith("/api/funds/510300")) return new Response(JSON.stringify({
+      ...staticQuote,
+      industryAllocation: [],
+      stockHoldings: [],
+      performanceHistory: [],
+      performanceSource: "东方财富基金历史净值",
+      availability: { holdings: "empty", performance: "empty" }
+    }));
+    throw new Error(`Unexpected URL: ${url}`);
+  }, {
+    hostname: "127.0.0.1",
+    onTimeout: (timeoutMs) => timeouts.push(timeoutMs)
+  });
+
+  try {
+    await api.fetchFundSnapshot({
+      keyword: "",
+      matchBy: "all",
+      market: "all",
+      sort: "change_desc",
+      limit: 20
+    });
+    await api.fetchFundDetail("510300");
+
+    assert.equal(timeouts[0], 4_000);
+    assert.ok(
+      (timeouts[1] ?? 0) > 15_000,
+      "detail timeout must leave response overhead beyond the server's 15 second upstream window"
+    );
   } finally {
     await api.restore();
   }

@@ -404,6 +404,17 @@
   border-radius: 6px;
   box-shadow: 0 6px 18px rgba(30, 41, 59, 0.12);
 }
+.fund-chart-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .fund-holdings-state {
   min-height: 120px;
   display: flex;

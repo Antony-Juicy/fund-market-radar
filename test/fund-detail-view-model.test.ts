@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildHoldingsViewModel,
   buildPerformanceViewModel,
+  formatPerformanceAnnouncement,
   PERFORMANCE_PERIOD_OPTIONS
 } from "../web/components/fundDetailViewModel.js";
 
@@ -95,5 +96,12 @@ test("separates undisclosed holdings from unavailable holdings", () => {
   assert.deepEqual(
     { state: unavailable.state, message: unavailable.message },
     { state: "unavailable", message: "股票持仓暂时不可用" }
+  );
+});
+
+test("formats the active chart point for screen-reader announcement", () => {
+  assert.equal(
+    formatPerformanceAnnouncement({ date: "2026-07-15", value: 1.26, returnPercent: 5 }),
+    "2026-07-15，真实净值 1.2600，累计收益 +5.00%"
   );
 });

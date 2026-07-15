@@ -25,6 +25,7 @@ export function App() {
   const [error, setError] = useState<string>();
   const [stage, setStage] = useState(1);
   const [chainOpen, setChainOpen] = useState(false);
+  const [detailOpened, setDetailOpened] = useState(false);
   const [detail, setDetail] = useState<FundDetail>();
   const [detailLoading, setDetailLoading] = useState(false);
   const [period, setPeriod] = useState<FundPeriodKey>("today");
@@ -117,16 +118,20 @@ export function App() {
     setTab(next);
     const nextQuery = withResearchTab(query, next); setQuery(nextQuery); void runQuery(nextQuery);
   };
-  const reset = () => { suggestionControllerRef.current?.abort(); detailControllerRef.current?.abort(); setSuggestions([]); setSuggestionError(undefined); setQuery(initialQuery); setTab("all"); setPeriod("today"); setDetail(undefined); setDetailLoading(false); void runQuery(initialQuery); };
+  const reset = () => { suggestionControllerRef.current?.abort(); detailControllerRef.current?.abort(); setSuggestions([]); setSuggestionError(undefined); setQuery(initialQuery); setTab("all"); setPeriod("today"); setDetailOpened(false); setDetailLoading(false); void runQuery(initialQuery); };
   const openDetail = async (code: string) => {
     detailControllerRef.current?.abort();
     const controller = new AbortController(); detailControllerRef.current = controller;
+    setDetailOpened(true);
     setDetailLoading(true);
     try {
       const result = await fetchFundDetail(code, controller.signal);
       if (isActiveRequest(controller, detailControllerRef.current)) setDetail(result);
     } catch (caught) {
-      if ((caught as Error).name !== "AbortError" && isActiveRequest(controller, detailControllerRef.current)) setError(caught instanceof Error ? caught.message : "详情读取失败");
+      if ((caught as Error).name !== "AbortError" && isActiveRequest(controller, detailControllerRef.current)) {
+        setError(caught instanceof Error ? caught.message : "详情读取失败");
+        setDetailOpened(false);
+      }
     } finally {
       if (detailControllerRef.current === controller) setDetailLoading(false);
     }
@@ -143,7 +148,7 @@ export function App() {
       <Card withBorder radius="lg" padding="sm" className="chain-bar"><Group justify="space-between"><Group gap="xs"><IconRoute size={18} color="#2563eb" /><Text size="sm" fw={700}>MCP 调用链路</Text><Text size="xs" c="dimmed">调试模式</Text></Group><Button variant="subtle" size="xs" onClick={() => setChainOpen(true)}>查看调用步骤</Button></Group></Card>
     </Stack></Container></AppShell.Main>
     <McpChainDrawer opened={chainOpen} onClose={() => setChainOpen(false)} activeStep={loading ? stage : 4} />
-    <FundDetailPanel detail={detail} loading={detailLoading} onClose={() => { detailControllerRef.current?.abort(); setDetail(undefined); setDetailLoading(false); }} />
+    <FundDetailPanel opened={detailOpened} detail={detail} loading={detailLoading} onClose={() => { detailControllerRef.current?.abort(); setDetailOpened(false); setDetailLoading(false); }} onExitTransitionEnd={() => { if (!detailOpened) setDetail(undefined); }} />
     {error && <Modal opened onClose={() => setError(undefined)} title="请求未完成" centered><Group align="flex-start"><IconX color="red" /><Text>{error}</Text></Group></Modal>}
   </AppShell>;
 }
