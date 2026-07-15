@@ -26,9 +26,13 @@ const jsonHeaders = { "Content-Type": "application/json; charset=utf-8", "Cache-
 const source = "东方财富行业资金流向与指数行情";
 const ETF_PAGE_SIZE = 100;
 const FUND_CACHE_TTL_MS = 120000;
+const FUND_DETAIL_CACHE_TTL_MS = 600000;
+const FUND_DETAIL_REQUEST_TIMEOUT_MS = 15000;
+const PERFORMANCE_SOURCE = "东方财富基金历史净值";
 let fundQuotesCache;
 let fundQuotesExpiresAt = 0;
 let fundQuotesLoading;
+const fundDetailCache = new Map();
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -54,8 +58,9 @@ async function getText(url) {
 
 function number(value) {
   if (value === "" || value === "-" || value == null) return undefined;
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
   if (typeof value === "string" && value.trim() === "") return undefined;
-  const parsed = Number(value);
+  const parsed = Number(String(value).trim().replace(/,/g, "").replace(/%$/, ""));
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
@@ -71,6 +76,131 @@ function isCurrentTradingDate(dataDate, now = Date.now()) {
   const date = new Date(now);
   const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Shanghai", weekday: "short" }).format(date);
   return dataDate === shanghaiDate(now) && weekday !== "Sat" && weekday !== "Sun";
+}
+
+function shanghaiBusinessDate(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const value = (type) => parts.find((part) => part.type === type)?.value;
+  return value("year") + "-" + value("month") + "-" + value("day");
+}
+
+function historyStartDate(today) {
+  const start = new Date(today + "T00:00:00Z");
+  start.setUTCFullYear(start.getUTCFullYear() - 1);
+  start.setUTCDate(start.getUTCDate() - 10);
+  return start.toISOString().slice(0, 10);
+}
+
+async function getFundDetailText(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FUND_DETAIL_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0", Referer: "https://fund.eastmoney.com/" }
+    });
+    if (!response.ok) throw new Error("upstream http " + response.status);
+    return response.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseFundHistory(text) {
+  const payload = JSON.parse(text);
+  if (!Array.isArray(payload.Data?.LSJZList)) throw new Error("Fund history response has no LSJZList.");
+  return payload.Data.LSJZList.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const date = typeof row.FSRQ === "string" ? row.FSRQ.trim() : "";
+    const unitNav = number(row.DWJZ);
+    const cumulativeNav = number(row.LJJZ);
+    const value = cumulativeNav ?? unitNav;
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || value === undefined) return [];
+    return [{ date, value, ...(unitNav === undefined ? {} : { unitNav }), ...(cumulativeNav === undefined ? {} : { cumulativeNav }) }];
+  }).sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function plainText(html) {
+  return html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\\s+/g, " ").trim();
+}
+
+function parseFundHoldings(text) {
+  const contentMatch = text.match(/\\bcontent\\s*:\\s*("(?:\\\\.|[^"\\\\])*")/s);
+  if (!contentMatch) throw new Error("Fund holdings response has no content.");
+  const content = JSON.parse(contentMatch[1]);
+  const reportDate = plainText(content).match(/\\b\\d{4}-\\d{2}-\\d{2}\\b/)?.[0];
+  if (!reportDate) return { items: [] };
+  const items = [...content.matchAll(/<tr\\b[^>]*>([\\s\\S]*?)<\\/tr>/gi)].flatMap((row) => {
+    const cells = [...row[1].matchAll(/<td\\b[^>]*>([\\s\\S]*?)<\\/td>/gi)].map((cell) => plainText(cell[1]));
+    const rank = number(cells[0]);
+    const stockCode = cells[1]?.trim();
+    const stockName = cells[2]?.trim();
+    const navRatio = number(cells[6]);
+    if (rank === undefined || !stockCode || !stockName || navRatio === undefined) return [];
+    const sharesWan = number(cells[7]);
+    const marketValueWan = number(cells[8]);
+    return [{ rank, stockCode, stockName, navRatio, ...(sharesWan === undefined ? {} : { sharesWan }), ...(marketValueWan === undefined ? {} : { marketValueWan }), reportDate }];
+  });
+  return { items: items.slice(0, 10), reportDate };
+}
+
+async function loadFundDetail(code) {
+  const businessDate = shanghaiBusinessDate();
+  const historyUrl = "https://api.fund.eastmoney.com/f10/lsjz?" + new URLSearchParams({
+    fundCode: code,
+    pageIndex: "1",
+    pageSize: "400",
+    startDate: historyStartDate(businessDate),
+    endDate: businessDate
+  });
+  const holdingsUrl = "https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=" + encodeURIComponent(code) + "&topline=10&year=&month=";
+  const [historyResult, holdingsResult] = await Promise.allSettled([
+    getFundDetailText(historyUrl),
+    getFundDetailText(holdingsUrl)
+  ]);
+
+  let performanceHistory = [];
+  let performance = "unavailable";
+  if (historyResult.status === "fulfilled") {
+    try {
+      performanceHistory = parseFundHistory(historyResult.value);
+      performance = performanceHistory.length ? "available" : "empty";
+    } catch {}
+  }
+
+  let holdings = { items: [] };
+  let holdingsAvailability = "unavailable";
+  if (holdingsResult.status === "fulfilled") {
+    try {
+      holdings = parseFundHoldings(holdingsResult.value);
+      holdingsAvailability = holdings.items.length ? "available" : "empty";
+    } catch {}
+  }
+
+  return {
+    stockHoldings: holdings.items,
+    ...(holdings.reportDate === undefined ? {} : { holdingsReportDate: holdings.reportDate }),
+    performanceHistory,
+    performanceSource: PERFORMANCE_SOURCE,
+    availability: { holdings: holdingsAvailability, performance }
+  };
+}
+
+function fundDetail(code) {
+  const now = Date.now();
+  const cached = fundDetailCache.get(code);
+  if (cached && cached.expiresAt > now) return cached.value;
+  const value = loadFundDetail(code);
+  fundDetailCache.set(code, { expiresAt: now + FUND_DETAIL_CACHE_TTL_MS, value });
+  void value.catch(() => {
+    if (fundDetailCache.get(code)?.value === value) fundDetailCache.delete(code);
+  });
+  return value;
 }
 
 async function marketOverview() {
@@ -101,7 +231,7 @@ function parseOpenFunds(text) {
   const dateMatch = text.match(/showday:(\\[[^\\]]+\\])/);
   let dataDate = shanghaiDate();
   try { dataDate = JSON.parse(dateMatch?.[1] || "[]")[0] || dataDate; } catch {}
-  return rows.map((row) => ({ code: row[0], name: row[1], market: "off_exchange", fundType: "开放式公募", nav: number(row[3]), changePercent: number(row[8]), dataDate, updatedAt: new Date().toISOString(), source: "东方财富开放式基金净值", flowBasis: "基金净值与日涨跌幅" })).filter((item) => /^\\d{6}$/.test(item.code || "") && item.name && typeof item.nav === "number");
+  return rows.map((row) => ({ code: row[0], name: row[1], market: "off_exchange", fundType: "开放式公募", nav: number(row[3]), changePercent: number(row[8]), dataDate, updatedAt: new Date().toISOString(), isTradingDay: isCurrentTradingDate(dataDate), officialNavAvailable: true, source: "东方财富开放式基金净值", flowBasis: "基金净值与日涨跌幅" })).filter((item) => /^\\d{6}$/.test(item.code || "") && item.name && typeof item.nav === "number");
 }
 
 function etfUrl(page) {
@@ -114,7 +244,10 @@ async function loadFundQuotes() {
   const pageCount = Math.max(1, Math.ceil(Number(firstEtfPayload.data?.total || 0) / ETF_PAGE_SIZE));
   const remainingPayloads = await Promise.all(Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) => getJson(etfUrl(index + 2))));
   const etfRows = [firstEtfPayload, ...remainingPayloads].flatMap((payload) => payload.data?.diff || []);
-  const etfs = etfRows.map((row) => ({ code: row.f12, name: row.f14, market: "on_exchange", fundType: "ETF", price: number(row.f2), nav: number(row.f441), changePercent: number(row.f3), periodChanges: { today: number(row.f3) }, dataDate: /^\\d{8}$/.test(String(row.f297)) ? String(row.f297).replace(/(\\d{4})(\\d{2})(\\d{2})/, "$1-$2-$3") : shanghaiDate(), updatedAt: dateOf(row.f124), source: "东方财富 ETF 行情", flowBasis: "ETF 交易价格与日涨跌幅" })).filter((item) => /^\\d{6}$/.test(item.code || "") && item.name);
+  const etfs = etfRows.map((row) => {
+    const dataDate = /^\\d{8}$/.test(String(row.f297)) ? String(row.f297).replace(/(\\d{4})(\\d{2})(\\d{2})/, "$1-$2-$3") : shanghaiDate();
+    return { code: row.f12, name: row.f14, market: "on_exchange", fundType: "ETF", price: number(row.f2), nav: number(row.f441), changePercent: number(row.f3), periodChanges: { today: number(row.f3) }, dataDate, updatedAt: dateOf(row.f124), isTradingDay: isCurrentTradingDate(dataDate), officialNavAvailable: true, source: "东方财富 ETF 行情", flowBasis: "ETF 交易价格与日涨跌幅" };
+  }).filter((item) => /^\\d{6}$/.test(item.code || "") && item.name);
   return etfs.concat(parseOpenFunds(openText));
 }
 
@@ -158,7 +291,7 @@ async function api(url) {
   const detail = url.pathname.match(/^\\/api\\/funds\\/(\\d{6})$/);
   if (detail) {
     const item = (await fundQuotes()).find((fund) => fund.code === detail[1]);
-    return item ? json({ ...item, industryAllocation: [] }) : json({ error: "未找到该基金。" }, 404);
+    return item ? json({ ...item, ...(await fundDetail(detail[1])), industryAllocation: [] }) : json({ error: "未找到该基金。" }, 404);
   }
   return json({ error: "Not found." }, 404);
 }
@@ -166,7 +299,7 @@ async function api(url) {
 export default { async fetch(request) {
   const url = new URL(request.url);
   if (url.pathname.startsWith("/api/")) {
-    try { return cors(await api(url)); } catch (error) { return json({ error: "实时数据源暂时不可用。" }, 502); }
+    try { return cors(await api(url)); } catch (error) { return cors(json({ error: "实时数据源暂时不可用。" }, 502)); }
   }
   if (url.pathname === "/" || url.pathname === "/index.html") return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
   const asset = assets[url.pathname];
