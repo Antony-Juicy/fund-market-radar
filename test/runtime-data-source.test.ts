@@ -108,7 +108,7 @@ test("GitHub Pages exposes unavailable research instead of static fake detail", 
   }
 });
 
-test("local cold requests allow the real Eastmoney adapter to finish", async () => {
+test("deployed cold requests allow the real Eastmoney adapter to finish", async () => {
   const timeouts: number[] = [];
   const api = await browserApi(async (input) => {
     const url = String(input);
@@ -123,7 +123,7 @@ test("local cold requests allow the real Eastmoney adapter to finish", async () 
     }));
     throw new Error(`Unexpected URL: ${url}`);
   }, {
-    hostname: "127.0.0.1",
+    hostname: "fund-market-radar.gabbiyabbiy9.chatgpt.site",
     onTimeout: (timeoutMs) => timeouts.push(timeoutMs)
   });
 

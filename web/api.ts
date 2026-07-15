@@ -14,8 +14,7 @@ const DETAIL_API_BASE_URL = String(
 ).replace(/\/$/, "");
 const STATIC_DATA_BASE_URL = `${import.meta.env.BASE_URL}data`;
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
-const IS_LOCAL_PREVIEW = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(window.location.hostname);
-const LIVE_REQUEST_TIMEOUT_MS = IS_LOCAL_PREVIEW ? 30_000 : 4_000;
+const LIVE_REQUEST_TIMEOUT_MS = 30_000;
 const DETAIL_REQUEST_TIMEOUT_MS = 20_000;
 const PREFER_STATIC_DATA = shouldPreferStaticData(window.location.hostname);
 let staticFundsPromise: Promise<FundSnapshot> | undefined;
