@@ -57,6 +57,19 @@ function upstreamFetch(options: UpstreamOptions = {}): typeof fetch {
   };
 }
 
+function hangingDetailFetch(): typeof fetch {
+  const baseFetch = upstreamFetch();
+  return async (input, init) => {
+    const url = String(input);
+    if (url.includes("api.fund.eastmoney.com/f10/lsjz") || url.includes("FundArchivesDatas.aspx")) {
+      return await new Promise<Response>(() => {
+        void init;
+      });
+    }
+    return baseFetch(input, init);
+  };
+}
+
 async function workerHarness(fetchImplementation: typeof fetch) {
   const originalFetch = globalThis.fetch;
   const originalWarn = console.warn;
@@ -122,6 +135,28 @@ test("generated Worker keeps NAV history when holdings are unavailable", async (
       code: "510300", source: "holdings", failure: "request_failed"
     }]]);
   } finally {
+    harness.restore();
+  }
+});
+
+test("generated Worker returns unavailable detail when upstream fetches never settle", async () => {
+  const originalSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = ((handler: TimerHandler, _timeout?: number, ...args: unknown[]) =>
+    originalSetTimeout(handler, 1, ...args)) as typeof setTimeout;
+  const harness = await workerHarness(hangingDetailFetch());
+  try {
+    const response = await Promise.race([
+      harness.worker.fetch(new Request("https://sites.test/api/funds/510300")),
+      new Promise<never>((_, reject) => originalSetTimeout(() => reject(new Error("detail request did not settle")), 100))
+    ]);
+    const body = await response.json() as { stockHoldings: unknown[]; performanceHistory: unknown[]; availability: unknown };
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.stockHoldings, []);
+    assert.deepEqual(body.performanceHistory, []);
+    assert.deepEqual(body.availability, { holdings: "unavailable", performance: "unavailable" });
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
     harness.restore();
   }
 });

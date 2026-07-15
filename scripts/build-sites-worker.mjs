@@ -103,19 +103,29 @@ function warnFundDetailFailure(code, source, failure) {
 
 async function getFundDetailText(url, code, source) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FUND_DETAIL_REQUEST_TIMEOUT_MS);
+  let timer;
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0", Referer: "https://fund.eastmoney.com/" }
-    });
-    if (!response.ok) throw new Error("upstream http " + response.status);
-    return response.text();
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0", Referer: "https://fund.eastmoney.com/" }
+        });
+        if (!response.ok) throw new Error("upstream http " + response.status);
+        return response.text();
+      })(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error("fund detail upstream timeout"));
+        }, FUND_DETAIL_REQUEST_TIMEOUT_MS);
+      })
+    ]);
   } catch (error) {
     warnFundDetailFailure(code, source, "request_failed");
     throw error;
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
