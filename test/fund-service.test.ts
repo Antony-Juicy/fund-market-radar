@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EastmoneyFundAdapter, FundService, PythonFundAdapter } from "../src/fund-service.js";
+import {
+  EastmoneyFundAdapter,
+  FundService,
+  PythonFundAdapter,
+  type FundResearchDetailSource
+} from "../src/fund-service.js";
 import type { FundQuote, FundResearchDetail } from "../src/fund-types.js";
 
 const quote: FundQuote = {
@@ -43,8 +48,6 @@ test("fund service applies keyword and market filters", async () => {
 });
 
 test("Eastmoney adapter merges research detail without overwriting quote identity or source", async () => {
-  const adapter = new EastmoneyFundAdapter();
-  adapter.listQuotes = async () => [quote];
   const research: FundResearchDetail = {
     stockHoldings: [{ rank: 1, stockCode: "001309", stockName: "德明利", navRatio: 1.05, reportDate: "2026-03-31" }],
     holdingsReportDate: "2026-03-31",
@@ -52,7 +55,11 @@ test("Eastmoney adapter merges research detail without overwriting quote identit
     performanceSource: "东方财富基金历史净值",
     availability: { holdings: "available", performance: "available" }
   };
-  Object.assign(adapter, { detailSource: { getResearchDetail: async () => research } });
+  const detailSource: FundResearchDetailSource = {
+    getResearchDetail: async () => research
+  };
+  const adapter = new EastmoneyFundAdapter(detailSource);
+  adapter.listQuotes = async () => [quote];
 
   const detail = await adapter.getDetail("510300");
 

@@ -10,6 +10,10 @@ export interface FundDataAdapter {
   getDetail(code: string): Promise<FundDetail | undefined>;
 }
 
+export interface FundResearchDetailSource {
+  getResearchDetail(code: string): Promise<FundResearchDetail>;
+}
+
 export class PythonFundAdapter implements FundDataAdapter {
   constructor(
     private readonly scriptPath = resolve(process.cwd(), "python/fund_adapter.py"),
@@ -39,7 +43,7 @@ export class EastmoneyFundAdapter implements FundDataAdapter {
   private cache?: { expiresAt: number; quotes: Promise<FundQuote[]> };
 
   constructor(
-    private readonly detailSource: Pick<EastmoneyFundDetailSource, "getResearchDetail"> = new EastmoneyFundDetailSource()
+    private readonly detailSource: FundResearchDetailSource = new EastmoneyFundDetailSource()
   ) {}
 
   async listQuotes(): Promise<FundQuote[]> {

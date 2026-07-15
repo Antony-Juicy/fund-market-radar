@@ -137,6 +137,24 @@ test("GET /api/funds/:code returns holdings and performance history", async () =
   });
 });
 
+test("GET /api/funds/:code returns 404 when the detail caller finds no fund", async () => {
+  let requestedCode: string | undefined;
+
+  await withServer({
+    callHello: async () => ({ content: [] }),
+    callFundDetail: async (code) => {
+      requestedCode = code;
+      return undefined;
+    }
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/funds/561780`);
+
+    assert.equal(response.status, 404);
+    assert.equal(requestedCode, "561780");
+    assert.deepEqual(await response.json(), { error: "未找到该基金。" });
+  });
+});
+
 test("unknown routes return 404", async () => {
   await withServer(
     {
