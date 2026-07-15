@@ -89,6 +89,27 @@ test("reuses one in-flight detail load for concurrent requests", async () => {
   await first;
 });
 
+test("bounds and expires cached research detail loads", async () => {
+  let now = new Date("2026-07-15T08:00:00.000Z");
+  const calls = new Map<string, number>();
+  const fetch: typeof globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    const code = url.searchParams.get(url.pathname.includes("lsjz") ? "fundCode" : "code") ?? "";
+    calls.set(code, (calls.get(code) ?? 0) + 1);
+    return response(url.pathname.includes("lsjz") ? HISTORY_FIXTURE : HOLDINGS_FIXTURE);
+  };
+  const source = new EastmoneyFundDetailSource({ fetch, clock: () => now });
+  const codes = Array.from({ length: 101 }, (_, index) => String(510000 + index));
+
+  for (const code of codes) await source.getResearchDetail(code);
+  await source.getResearchDetail(codes[0]);
+  assert.equal(calls.get(codes[0]), 4);
+
+  now = new Date(now.getTime() + 600_001);
+  await source.getResearchDetail(codes.at(-1) ?? "");
+  assert.equal(calls.get(codes.at(-1) ?? ""), 4);
+});
+
 test("uses Shanghai business dates and exact Eastmoney query parameters", async () => {
   const urls: string[] = [];
   const fetch: typeof globalThis.fetch = async (input) => {

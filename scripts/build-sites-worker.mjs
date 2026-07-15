@@ -27,6 +27,7 @@ const source = "东方财富行业资金流向与指数行情";
 const ETF_PAGE_SIZE = 100;
 const FUND_CACHE_TTL_MS = 120000;
 const FUND_DETAIL_CACHE_TTL_MS = 600000;
+const FUND_DETAIL_CACHE_MAX_ENTRIES = 100;
 const FUND_DETAIL_REQUEST_TIMEOUT_MS = 15000;
 const PERFORMANCE_SOURCE = "东方财富基金历史净值";
 let fundQuotesCache;
@@ -96,7 +97,11 @@ function historyStartDate(today) {
   return start.toISOString().slice(0, 10);
 }
 
-async function getFundDetailText(url) {
+function warnFundDetailFailure(code, source, failure) {
+  console.warn("fund_detail_upstream_failure", { code, source, failure });
+}
+
+async function getFundDetailText(url, code, source) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FUND_DETAIL_REQUEST_TIMEOUT_MS);
   try {
@@ -106,6 +111,9 @@ async function getFundDetailText(url) {
     });
     if (!response.ok) throw new Error("upstream http " + response.status);
     return response.text();
+  } catch (error) {
+    warnFundDetailFailure(code, source, "request_failed");
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -160,8 +168,8 @@ async function loadFundDetail(code) {
   });
   const holdingsUrl = "https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=" + encodeURIComponent(code) + "&topline=10&year=&month=";
   const [historyResult, holdingsResult] = await Promise.allSettled([
-    getFundDetailText(historyUrl),
-    getFundDetailText(holdingsUrl)
+    getFundDetailText(historyUrl, code, "history"),
+    getFundDetailText(holdingsUrl, code, "holdings")
   ]);
 
   let performanceHistory = [];
@@ -170,7 +178,9 @@ async function loadFundDetail(code) {
     try {
       performanceHistory = parseFundHistory(historyResult.value);
       performance = performanceHistory.length ? "available" : "empty";
-    } catch {}
+    } catch {
+      warnFundDetailFailure(code, "history", "parse_failed");
+    }
   }
 
   let holdings = { items: [] };
@@ -179,7 +189,9 @@ async function loadFundDetail(code) {
     try {
       holdings = parseFundHoldings(holdingsResult.value);
       holdingsAvailability = holdings.items.length ? "available" : "empty";
-    } catch {}
+    } catch {
+      warnFundDetailFailure(code, "holdings", "parse_failed");
+    }
   }
 
   return {
@@ -195,6 +207,14 @@ function fundDetail(code) {
   const now = Date.now();
   const cached = fundDetailCache.get(code);
   if (cached && cached.expiresAt > now) return cached.value;
+  for (const [cachedCode, entry] of fundDetailCache) {
+    if (entry.expiresAt <= now) fundDetailCache.delete(cachedCode);
+  }
+  while (fundDetailCache.size >= FUND_DETAIL_CACHE_MAX_ENTRIES) {
+    const oldestCode = fundDetailCache.keys().next().value;
+    if (oldestCode === undefined) break;
+    fundDetailCache.delete(oldestCode);
+  }
   const value = loadFundDetail(code);
   fundDetailCache.set(code, { expiresAt: now + FUND_DETAIL_CACHE_TTL_MS, value });
   void value.catch(() => {

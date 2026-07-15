@@ -6,6 +6,7 @@ import type {
 } from "./fund-types.js";
 
 const CACHE_TTL_MS = 10 * 60_000;
+const CACHE_MAX_ENTRIES = 100;
 const REQUEST_TIMEOUT_MS = 15_000;
 const PERFORMANCE_SOURCE = "东方财富基金历史净值";
 
@@ -132,6 +133,15 @@ export class EastmoneyFundDetailSource {
     const now = this.clock().getTime();
     const cached = this.cache.get(code);
     if (cached && cached.expiresAt > now) return cached.value;
+
+    for (const [cachedCode, entry] of this.cache) {
+      if (entry.expiresAt <= now) this.cache.delete(cachedCode);
+    }
+    while (this.cache.size >= CACHE_MAX_ENTRIES) {
+      const oldestCode = this.cache.keys().next().value;
+      if (oldestCode === undefined) break;
+      this.cache.delete(oldestCode);
+    }
 
     const value = this.load(code, new Date(now));
     this.cache.set(code, { expiresAt: now + CACHE_TTL_MS, value });
