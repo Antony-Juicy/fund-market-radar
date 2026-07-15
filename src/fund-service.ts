@@ -23,7 +23,14 @@ export class PythonFundAdapter implements FundDataAdapter {
 
   async getDetail(code: string): Promise<FundDetail | undefined> {
     const quote = (await this.listQuotes()).find((item) => item.code === code);
-    return quote ? { ...quote, industryAllocation: [] } : undefined;
+    return quote ? {
+      ...quote,
+      industryAllocation: [],
+      stockHoldings: [],
+      performanceHistory: [],
+      performanceSource: "东方财富基金历史净值",
+      availability: { holdings: "empty", performance: "empty" }
+    } : undefined;
   }
 }
 
@@ -49,7 +56,14 @@ export class EastmoneyFundAdapter implements FundDataAdapter {
 
   async getDetail(code: string): Promise<FundDetail | undefined> {
     const quote = (await this.listQuotes()).find((item) => item.code === code);
-    return quote ? { ...quote, industryAllocation: [] } : undefined;
+    return quote ? {
+      ...quote,
+      industryAllocation: [],
+      stockHoldings: [],
+      performanceHistory: [],
+      performanceSource: "东方财富基金历史净值",
+      availability: { holdings: "empty", performance: "empty" }
+    } : undefined;
   }
 }
 

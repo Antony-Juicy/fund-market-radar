@@ -39,7 +39,7 @@ export interface FundSnapshot {
   keyword: string; matchBy: FundMatchBy; market: FundMarket; sort: FundSort; limit: number;
   dataDate: string; updatedAt: string; items: FundQuote[];
 }
-export interface FundDetail extends FundQuote, Partial<FundResearchDetail> { industryAllocation: Array<{ industry: string; ratio: number; reportDate: string }>; }
+export interface FundDetail extends FundQuote, FundResearchDetail { industryAllocation: Array<{ industry: string; ratio: number; reportDate: string }>; }
 export interface FundQuery { keyword: string; matchBy: FundMatchBy; market: FundMarket; sort: FundSort; limit: number; }
 export interface MarketIndexQuote { code: string; name: string; value: number; changePercent: number; }
 export interface SectorFlow { name: string; amount: number; changePercent?: number; }

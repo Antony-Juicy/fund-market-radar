@@ -79,6 +79,6 @@ export interface FundResearchDetail {
   availability: FundDetailAvailability;
 }
 
-export interface FundDetail extends FundQuote, Partial<FundResearchDetail> {
+export interface FundDetail extends FundQuote, FundResearchDetail {
   industryAllocation: FundIndustryAllocation[];
 }
