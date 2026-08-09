@@ -2,22 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createServer } from "vite";
-import { shouldPreferStaticData } from "../src/runtime-data-source.js";
-
-test("GitHub Pages uses its exported market snapshot without contacting the live Sites domain", () => {
-  assert.equal(shouldPreferStaticData("antony-juicy.github.io"), true);
-  assert.equal(shouldPreferStaticData("fund-market-radar.gabbiyabbiy9.chatgpt.site"), false);
-  assert.equal(shouldPreferStaticData("127.0.0.1"), false);
-});
 
 test("GitHub Pages requests dynamic fund detail from Sites", async () => {
   const source = await readFile("web/api.ts", "utf8");
 
-  assert.match(source, /VITE_DETAIL_API_BASE_URL/);
-  assert.match(source, /fetchDynamicFundDetail/);
-  assert.match(source, /DETAIL_API_BASE_URL\}\/api\/funds\/\$\{code\}/);
-  assert.match(source, /holdings: "unavailable"/);
-  assert.match(source, /performance: "unavailable"/);
+  assert.match(source, /VITE_API_BASE_URL/);
+  assert.match(source, /fetchLive<FundDetail>\(`\/api\/funds\/\$\{code\}`/);
+  assert.doesNotMatch(source, /STATIC_DATA_BASE_URL|fetchStaticFunds|PREFER_STATIC_DATA/);
 });
 
 const staticQuote = {
@@ -56,6 +47,7 @@ async function browserApi(fetchImplementation: typeof fetch, options: BrowserApi
   const module = await server.ssrLoadModule("/api.ts");
   return {
     fetchFundDetail: module.fetchFundDetail as (code: string) => Promise<unknown>,
+    fetchMarketOverview: module.fetchMarketOverview as () => Promise<unknown>,
     fetchFundSnapshot: module.fetchFundSnapshot as (query: {
       keyword: string;
       matchBy: "all";
@@ -71,18 +63,66 @@ async function browserApi(fetchImplementation: typeof fetch, options: BrowserApi
   };
 }
 
-test("GitHub Pages keeps static identity while using dynamic detail research", async () => {
+test("GitHub Pages loads the current fund snapshot from Sites instead of deployment JSON", async () => {
+  const liveSnapshot = {
+    ...staticSnapshot,
+    dataDate: "2026-08-07",
+    updatedAt: "2026-08-07T08:00:00.000Z",
+    items: [{ ...staticQuote, name: "实时沪深300ETF", dataDate: "2026-08-07" }]
+  };
+  const requests: string[] = [];
   const api = await browserApi(async (input) => {
     const url = String(input);
-    if (url.includes("/data/funds.json")) return new Response(JSON.stringify(staticSnapshot));
+    requests.push(url);
+    if (url.includes("/api/funds?")) return new Response(JSON.stringify(liveSnapshot));
+    throw new Error(`Unexpected URL: ${url}`);
+  });
+  try {
+    const snapshot = await api.fetchFundSnapshot({
+      keyword: "",
+      matchBy: "all",
+      market: "all",
+      sort: "change_desc",
+      limit: 20
+    }) as typeof liveSnapshot;
+
+    assert.equal(snapshot.dataDate, "2026-08-07");
+    assert.equal(snapshot.items[0]?.name, "实时沪深300ETF");
+    assert.equal(requests.some((url) => url.includes("/data/funds.json")), false);
+  } finally {
+    await api.restore();
+  }
+});
+
+test("GitHub Pages loads the current market overview from Sites", async () => {
+  const overview = { dataDate: "2026-08-07", source: "东方财富行业资金流向与指数行情" };
+  const requests: string[] = [];
+  const api = await browserApi(async (input) => {
+    const url = String(input);
+    requests.push(url);
+    if (url.endsWith("/api/market-overview")) return new Response(JSON.stringify(overview));
+    throw new Error(`Unexpected URL: ${url}`);
+  });
+  try {
+    assert.deepEqual(await api.fetchMarketOverview(), overview);
+    assert.equal(requests.some((url) => url.includes("/data/market-overview.json")), false);
+  } finally {
+    await api.restore();
+  }
+});
+
+test("GitHub Pages uses the current quote returned with dynamic detail research", async () => {
+  const api = await browserApi(async (input) => {
+    const url = String(input);
     if (url.includes("/api/funds/510300")) return new Response(JSON.stringify({
-      ...staticQuote, name: "不应覆盖静态身份", industryAllocation: [], stockHoldings: [{ rank: 1, stockCode: "001309", stockName: "德明利", navRatio: 1.05, reportDate: "2026-03-31" }], performanceHistory: [{ date: "2026-07-15", value: 1.6893 }], performanceSource: "东方财富基金历史净值", availability: { holdings: "available", performance: "available" }
+      ...staticQuote, name: "实时沪深300ETF", dataDate: "2026-08-07", industryAllocation: [], stockHoldings: [{ rank: 1, stockCode: "001309", stockName: "德明利", navRatio: 1.05, reportDate: "2026-03-31" }], performanceHistory: [{ date: "2026-08-07", value: 1.6893 }], performanceSource: "东方财富基金历史净值", availability: { holdings: "available", performance: "available" }
     }));
     throw new Error(`Unexpected URL: ${url}`);
   });
   try {
     const detail = await api.fetchFundDetail("510300") as typeof staticQuote & { stockHoldings: unknown[]; availability: unknown };
-    assert.equal(detail.name, staticQuote.name);
+    assert.equal(detail.name, "实时沪深300ETF");
+    assert.equal(detail.dataDate, "2026-08-07");
     assert.equal(detail.stockHoldings.length, 1);
     assert.deepEqual(detail.availability, { holdings: "available", performance: "available" });
   } finally {
@@ -90,19 +130,15 @@ test("GitHub Pages keeps static identity while using dynamic detail research", a
   }
 });
 
-test("GitHub Pages exposes unavailable research instead of static fake detail", async () => {
+test("GitHub Pages does not mask a live API failure with a stale deployment snapshot", async () => {
   const api = await browserApi(async (input) => {
     const url = String(input);
-    if (url.includes("/data/funds.json")) return new Response(JSON.stringify(staticSnapshot));
     if (url.includes("/api/funds/510300")) return new Response(JSON.stringify({ error: "unavailable" }), { status: 502 });
+    if (url.includes("/data/funds.json")) return new Response(JSON.stringify(staticSnapshot));
     throw new Error(`Unexpected URL: ${url}`);
   });
   try {
-    const detail = await api.fetchFundDetail("510300") as typeof staticQuote & { stockHoldings: unknown[]; performanceHistory: unknown[]; availability: unknown };
-    assert.equal(detail.name, staticQuote.name);
-    assert.deepEqual(detail.stockHoldings, []);
-    assert.deepEqual(detail.performanceHistory, []);
-    assert.deepEqual(detail.availability, { holdings: "unavailable", performance: "unavailable" });
+    await assert.rejects(api.fetchFundDetail("510300"), /unavailable/);
   } finally {
     await api.restore();
   }
